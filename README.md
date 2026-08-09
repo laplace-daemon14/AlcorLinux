@@ -33,3 +33,4 @@ Alcor GNU/Linux is an independent, offensive security and pentesting-focused, an
 ### Phase 4: Stable v1.0 Release
 - [ ] Official stable release of Alcor GNU/Linux.
 - [ ] Long-term support (LTS) kernel options and dedicated package repositories.
+* 

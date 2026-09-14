@@ -21,7 +21,7 @@ echo "[!] [Alcor] Configuring BlackArch repositories inside the container..."
 distrobox-enter --name "$CONTAINER_NAME" -- bash -c '
     set -e
     
-    curl -s -O https://blackarch.org
+    curl -s -O https://blackarch.org/strap.sh
     chmod +x strap.sh
     
     sudo ./strap.sh < /dev/null

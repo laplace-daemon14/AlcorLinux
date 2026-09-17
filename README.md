@@ -47,7 +47,7 @@ Security-minded systems.
 <table>
 <tr>
 <td width="150" valign="top" align="center">
-<img src="co_pp.png" alt="Co-Owner" width="130">
+<img src="keryn.webp" alt="Co-Owner" width="130">
 <br><br>
 **Keryn*  
 `SHAPING THE FUTURE`
@@ -55,8 +55,7 @@ Security-minded systems.
 <td valign="top">
 Scalable infrastructures.
 
-- ⚙️ Backend: **3 years**
-- ☁️ Cloud/DevOps: **1 year**
+- 💿 Custom Linux: **1 year**
 - 🛠️ Automation focus
 
 **I KNOW**  

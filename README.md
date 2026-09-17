@@ -13,66 +13,58 @@ Alcor GNU/Linux is an independent, offensive security and pentesting-focused, an
 
 <table width="100%">
 <tr>
-<!-- SOL TARAF: ALTAIR / ALCOR (OWNER) -->
-<td width="50%" valign="top">
-
+<td width="50%" valign="top" style="border-right: 1px solid #333; padding-right: 10px;">
 <table>
 <tr>
-<td width="150" valign="top" align="center">
-<img src="pp.png" alt="Me" width="130">
-<br><br>
-**LaPlace / Altair**  
-`BUILDING IN PUBLIC`
+<td width="140" valign="top" align="center">
+<img src="pp.png" alt="Me" width="130"><br><br>
+<b>LaPlace / Altair</b><br>
+<code>BUILDING IN PUBLIC</code>
+<code>OWNER</code>  
 </td>
-<td valign="top">
+<td valign="top" style="padding-left: 10px;">
 Security-minded systems.
-
-- 🛡️ Cyber: **4 years**
-- 💿 Custom Linux: **1 year**
-- 🧭 Clean systems focus
-
-**I KNOW**  
-<img src="https://skillicons.dev//icons?i=python,bash,cs,arduino,html,css,js,java,xml" alt="Known technologies">
-
-**LEARNING**  
+<ul>
+  <li>🛡️ Cyber: <b>4 years</b></li>
+  <li>💿 Custom Linux: <b>1 year</b></li>
+  <li>🧭 Clean systems focus</li>
+</ul>
+<b>I KNOW</b><br>
+<img src="https://skillicons.dev//icons?i=python,bash,cs,arduino,html,css,js,java,xml" alt="Known technologies"><br><br>
+<b>LEARNING</b><br>
 <img src="https://skillicons.dev//icons?i=rust,c,cpp" alt="Technologies currently learning">
 </td>
 </tr>
 </table>
-
 </td>
 
-<td width="50%" valign="top">
-
+<!-- SAĞ TARAF: KERYN (CO-OWNER) -->
+<td width="50%" valign="top" style="padding-left: 15px;">
 <table>
 <tr>
-<td width="150" valign="top" align="center">
-<img src="keryn.webp" alt="Co-Owner" width="130">
-<br><br>
-**Keryn*  
-`SHAPING THE FUTURE`
+<td width="140" valign="top" align="center">
+<img src="keryn.webp" alt="Co-Owner" width="130"><br><br>
+<b>Keryn</b><br>
+<code>SHAPING THE FUTURE</code>
+<code>CO-OWNER</code>
 </td>
-<td valign="top">
+<td valign="top" style="padding-left: 10px;">
 Scalable infrastructures.
-
-- 💿 Custom Linux: **1 year**
-- 🛠️ Automation focus
-
-**I KNOW**  
-<img src="https://skillicons.dev//icons?i=python,bash" alt="Known technologies">
-
-**LEARNING**  
+<ul>
+  <li>💿 Custom Linux: <b>1 year</b></li>
+  <li>🛠️ Automation focus</li>
+</ul>
+<br>
+<b>I KNOW</b><br>
+<img src="https://skillicons.dev//icons?i=python,bash" alt="Known technologies"><br><br>
+<b>LEARNING</b><br>
 <img src="https://skillicons.dev//icons?i=c" alt="Technologies currently learning">
 </td>
 </tr>
 </table>
-
 </td>
 </tr>
 </table>
->
-
----
 
 ## Roadmap
 

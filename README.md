@@ -38,7 +38,7 @@ Security-minded systems.
 </table>
 </td>
 
-<!-- SAĞ TARAF: KERYN (CO-OWNER) -->
+
 <td width="50%" valign="top" style="padding-left: 15px;">
 <table>
 <tr>

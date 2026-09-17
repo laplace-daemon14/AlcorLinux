@@ -9,6 +9,69 @@ Alcor GNU/Linux is an independent, offensive security and pentesting-focused, an
 - **Custom Boot Experience:** Features a custom-tailored, fluid Plymouth startup animation.
 - **Optimized Environment:** Lightweight XFCE desktop setup paired with a pre-configured Zsh terminal and fastfetch.
 - **Offensive Security Ready:** Architecture designed to run penetration testing and security tools safely inside isolated containers without risking host stability.
+## OPERATORS
+
+<table width="100%">
+<tr>
+<!-- SOL TARAF: ALTAIR / ALCOR (OWNER) -->
+<td width="50%" valign="top">
+
+<table>
+<tr>
+<td width="150" valign="top" align="center">
+<img src="pp.png" alt="Me" width="130">
+<br><br>
+**LaPlace / Altair**  
+`BUILDING IN PUBLIC`
+</td>
+<td valign="top">
+Security-minded systems.
+
+- 🛡️ Cyber: **4 years**
+- 💿 Custom Linux: **1 year**
+- 🧭 Clean systems focus
+
+**I KNOW**  
+<img src="https://skillicons.dev//icons?i=python,bash,cs,arduino,html,css,js,java,xml" alt="Known technologies">
+
+**LEARNING**  
+<img src="https://skillicons.dev//icons?i=rust,c,cpp" alt="Technologies currently learning">
+</td>
+</tr>
+</table>
+
+</td>
+
+<td width="50%" valign="top">
+
+<table>
+<tr>
+<td width="150" valign="top" align="center">
+<img src="co_pp.png" alt="Co-Owner" width="130">
+<br><br>
+**Keryn*  
+`SHAPING THE FUTURE`
+</td>
+<td valign="top">
+Scalable infrastructures.
+
+- ⚙️ Backend: **3 years**
+- ☁️ Cloud/DevOps: **1 year**
+- 🛠️ Automation focus
+
+**I KNOW**  
+<img src="https://skillicons.dev//icons?i=python,bash" alt="Known technologies">
+
+**LEARNING**  
+<img src="https://skillicons.dev//icons?i=c" alt="Technologies currently learning">
+</td>
+</tr>
+</table>
+
+</td>
+</tr>
+</table>
+>
 
 ---
 
@@ -22,8 +85,8 @@ Alcor GNU/Linux is an independent, offensive security and pentesting-focused, an
 - [x] Release Alpha 1 build for public testing.
 
 ### Phase 2: Ecosystem & Tooling (Next)
-- [ ] **Distrobox & Podman Integration:** Build a robust containerization layer so users can run security, pentesting, and development tools safely without risking host system stability.
-- [ ] **Bloatware Cleanup:** Streamline pre-installed packages and optimize system performance/resource usage.
+- [x] **Distrobox & Podman Integration:** Build a robust containerization layer so users can run security, pentesting, and development tools safely without risking host system stability.
+- [x] **Bloatware Cleanup:** Streamline pre-installed packages and optimize system performance/resource usage.
 
 ### Phase 3: Beta & Polishing
 - [ ] **Installer Evaluation:** Test and configure Calamares first. *(Note: If Calamares doesn't meet our exact custom requirements, we will pivot to developing our own dedicated native installer).*

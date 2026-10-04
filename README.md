@@ -2,7 +2,6 @@
 
 Alcor GNU/Linux is an independent, offensive security and pentesting-focused, and lightweight Linux distribution built on top of a robust Arch Linux base. Designed for enthusiasts, developers, and penetration testers, Alcor aims to provide a fast, clean, and highly customizable operating system experience.
 
-*(Note on "Independent": While built on Arch Linux for a reliable foundation, Alcor maintains its own custom identity, configuration ecosystem, custom installer roadmap, and sandboxed toolsets rather than just being a pre-configured theme.)*
 
 ## Features
 - **Arch Linux Base:** Rolling-release model with access to the Arch User Repository (AUR) and cutting-edge software.
@@ -25,9 +24,9 @@ Alcor GNU/Linux is an independent, offensive security and pentesting-focused, an
 <td valign="top" style="padding-left: 10px;">
 Security-minded systems.
 <ul>
-  <li>🛡️ Cyber: <b>4 years</b></li>
-  <li>💿 Custom Linux: <b>1 year</b></li>
-  <li>🧭 Clean systems focus</li>
+  <li>Cyber: <b>4 years</b></li>
+  <li>Custom Linux: <b>1 year</b></li>
+  <li> Clean systems focus</li>
 </ul>
 <b>I KNOW</b><br>
 <img src="https://skillicons.dev//icons?i=python,bash,cs,arduino,html,css,js,java,xml" alt="Known technologies"><br><br>

@@ -1,0 +1,366 @@
+#!/usr/bin/env bash
+set -e
+
+CONTAINER="algol"
+ROUTE="auto"
+PACMAN_ARGS=()
+
+for arg in "$@"; do
+    case "$arg" in
+        -host|--host)
+            ROUTE="host"
+            ;;
+        -algol|--algol)
+            ROUTE="algol"
+            ;;
+        *)
+            PACMAN_ARGS+=("$arg")
+            ;;
+    esac
+done
+
+if [ "$EUID" -eq 0 ] && [ -n "$SUDO_USER" ]; then
+    REAL_USER="$SUDO_USER"
+else
+    REAL_USER="$USER"
+fi
+
+if [ "$REAL_USER" = "root" ]; then
+    REAL_USER="alcor"
+fi
+REAL_HOME=""
+if command -v getent >/dev/null 2>&1; then
+    REAL_HOME="$(getent passwd "$REAL_USER" | cut -d: -f6)"
+fi
+if [ -z "$REAL_HOME" ]; then
+    REAL_HOME="$HOME"
+fi
+
+IS_SYNC=false
+for arg in "${PACMAN_ARGS[@]}"; do
+    if [[ "$arg" == "-S" ]] || [[ "$arg" == "--sync" ]]; then
+        IS_SYNC=true
+        break
+    fi
+done
+
+queue_host_packages() {
+    local package
+    [[ -n "${ALCOR_HOST_PACKAGE_QUEUE:-}" ]] || return 1
+    for package in "$@"; do
+        [[ "$package" == -* ]] && continue
+        if ! grep -Fxq -- "$package" "$ALCOR_HOST_PACKAGE_QUEUE"; then
+            printf '%s\n' "$package" >> "$ALCOR_HOST_PACKAGE_QUEUE"
+        fi
+    done
+    echo "[*] [Alcor Router] Host packages queued for privileged first-boot installation."
+}
+
+security_menu_category() {
+    local package_info="$1"
+    local package_name package_groups package_description package_text
+
+    package_name="$(printf '%s\n' "$package_info" | sed -n 's/^Name[[:space:]]*:[[:space:]]*//p' | head -n 1)"
+    package_groups="$(printf '%s\n' "$package_info" | sed -n 's/^Groups[[:space:]]*:[[:space:]]*//p' | head -n 1)"
+    package_description="$(printf '%s\n' "$package_info" | sed -n 's/^Description[[:space:]]*:[[:space:]]*//p' | head -n 1)"
+    package_name="${package_name,,}"
+    package_groups="${package_groups,,}"
+    package_text="${package_name} ${package_description,,}"
+
+    case "$package_name" in
+        metasploit|metasploit-framework)
+            printf '%s\n' SiberZafiyet
+            return
+            ;;
+    esac
+
+    case "$package_groups" in
+        *blackarch-recon*|*blackarch-scanner*|*blackarch-networking*) printf '%s\n' SiberBilgi; return ;;
+        *blackarch-vuln*) printf '%s\n' SiberZafiyet; return ;;
+        *blackarch-webapp*) printf '%s\n' SiberWeb; return ;;
+        *blackarch-database*) printf '%s\n' SiberDatabase; return ;;
+        *blackarch-cracker*) printf '%s\n' SiberSifre; return ;;
+        *blackarch-wireless*) printf '%s\n' SiberWireless; return ;;
+        *blackarch-reversing*) printf '%s\n' SiberReverse; return ;;
+        *blackarch-exploitation*) printf '%s\n' SiberExploitation; return ;;
+        *blackarch-sniffer*|*blackarch-proxy*) printf '%s\n' SiberSniffing; return ;;
+        *blackarch-posting*) printf '%s\n' SiberPost; return ;;
+        *blackarch-forensic*) printf '%s\n' SiberForensics; return ;;
+        *blackarch-reporting*) printf '%s\n' SiberReporting; return ;;
+        *blackarch-social*) printf '%s\n' SiberSocial; return ;;
+    esac
+
+    case "$package_text" in
+        *wireless*|*wi-fi*|*wifi*|*802.11*) printf '%s\n' SiberWireless ;;
+        *forensic*|*volatility*|*autopsy*) printf '%s\n' SiberForensics ;;
+        *report*) printf '%s\n' SiberReporting ;;
+        *social-engineering*|*social\ engineering*|*phishing*) printf '%s\n' SiberSocial ;;
+        *post-exploit*|*post\ exploit*|*privilege\ escalation*|*privesc*|*persistence*) printf '%s\n' SiberPost ;;
+        *reverse-engineer*|*reverse\ engineer*|*disassembler*|*decompiler*|*reversing*) printf '%s\n' SiberReverse ;;
+        *sniff*|*spoof*|*packet\ capture*) printf '%s\n' SiberSniffing ;;
+        *password*|*cracker*|*hashcat*|*john-the-ripper*|*credential*) printf '%s\n' SiberSifre ;;
+        *database*|*sql*|*dbms*|*mongodb*) printf '%s\n' SiberDatabase ;;
+        *webapp*|*web-application*|*web\ application*|*burp*|*gobuster*|*ffuf*|*nikto*) printf '%s\n' SiberWeb ;;
+        *recon*|*osint*|*scanner*|*nmap*|*masscan*|*enumeration*) printf '%s\n' SiberBilgi ;;
+        *vulnerability*|*vuln*|*cve*) printf '%s\n' SiberZafiyet ;;
+        *exploit*|*payload*|*shellcode*) printf '%s\n' SiberExploitation ;;
+        *) printf '%s\n' SiberAlgol ;;
+    esac
+}
+
+add_menu_category_to_desktop() {
+    local desktop_file="$1"
+    local menu_category="$2"
+    local temporary_file="${desktop_file}.tmp.$$"
+
+    [[ -f "$desktop_file" ]] || return 1
+    awk -v category="$menu_category" '
+        /^Categories=/ && !updated {
+            categories = $0
+            sub(/^Categories=/, "", categories)
+            pattern = "(^|;)" category "(;|$)"
+            if (categories !~ pattern) {
+                categories = category ";" categories
+            }
+            print "Categories=" categories
+            updated = 1
+            next
+        }
+        { print }
+        END {
+            if (!updated) {
+                print "Categories=" category ";"
+            }
+        }
+    ' "$desktop_file" > "$temporary_file" || return 1
+    chmod 0644 "$temporary_file" && mv "$temporary_file" "$desktop_file"
+}
+
+ensure_user_local_bin_path() {
+    local zshenv="$REAL_HOME/.zshenv"
+    mkdir -p "$REAL_HOME"
+    touch "$zshenv"
+    if ! grep -qF '# Alcor: add exported commands to PATH' "$zshenv"; then
+        cat >> "$zshenv" <<'EOF'
+
+# Alcor: add exported commands to PATH
+case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) export PATH="$HOME/.local/bin:$PATH" ;;
+esac
+EOF
+    fi
+    if [ "$EUID" -eq 0 ]; then
+        chown "$REAL_USER" "$zshenv"
+    fi
+}
+
+create_cli_menu_entry() {
+    local command_name="$1"
+    local exported_binary="$2"
+    local menu_category="$3"
+    local applications_dir="$REAL_HOME/.local/share/applications"
+    local desktop_file="$applications_dir/alcor-${command_name}.desktop"
+    local escaped_binary="$exported_binary"
+
+    escaped_binary="${escaped_binary//\\/\\\\}"
+    escaped_binary="${escaped_binary//\"/\\\"}"
+    mkdir -p "$applications_dir"
+    cat > "$desktop_file" <<EOF
+[Desktop Entry]
+Type=Application
+Name=${command_name} (Algol)
+Comment=Open ${command_name} help in the Algol terminal
+TryExec=xfce4-terminal
+Exec=xfce4-terminal --hold --execute "${escaped_binary}" -h
+Terminal=false
+Categories=${menu_category};
+EOF
+    if [ "$EUID" -eq 0 ]; then
+        chown "$REAL_USER" "$applications_dir"
+        chown "$REAL_USER" "$desktop_file"
+    fi
+    chmod 0644 "$desktop_file"
+}
+
+export_package_binaries() {
+    local package="$1"
+    local package_files="$2"
+    local menu_category="$3"
+    local binary_path
+    local command_name
+    local exported_any=false
+    local -a binary_paths
+
+    mapfile -t binary_paths < <(
+        printf '%s\n' "$package_files" |
+            awk '$NF ~ /^\/usr\/s?bin\/[^/]+$/ { print $NF }' |
+            sort -u
+    )
+    for binary_path in "${binary_paths[@]}"; do
+        if ! algol_command bash -c 'test -x "$1"' bash "$binary_path"; then
+            continue
+        fi
+        command_name="${binary_path##*/}"
+        if [ "$EUID" -eq 0 ]; then
+            install -d -o "$REAL_USER" "$REAL_HOME/.local/bin"
+        else
+            mkdir -p "$REAL_HOME/.local/bin"
+        fi
+        if ! algol_command distrobox-export --bin "$binary_path" --export-path "$REAL_HOME/.local/bin"; then
+            echo "[!] [Alcor Router] Failed to export '$binary_path' from '$package'." >&2
+            return 1
+        fi
+        create_cli_menu_entry "$command_name" "$REAL_HOME/.local/bin/$command_name" "$menu_category"
+        exported_any=true
+        echo "[+] [Alcor Router] Exported '$command_name' from '$package' with a menu launcher."
+    done
+
+    if [ "$exported_any" = false ] && [ "${#DESKTOP_FILES[@]}" -eq 0 ]; then
+        echo "[!] [Alcor Router] No executable in /usr/bin or desktop entry was found for '$package'." >&2
+        return 1
+    fi
+    ensure_user_local_bin_path
+}
+
+algol_command() {
+    if [ "$EUID" -eq 0 ]; then
+        sudo -u "$REAL_USER" distrobox enter "$CONTAINER" -- "$@"
+    else
+        distrobox enter "$CONTAINER" -- "$@"
+    fi
+}
+
+pacman_install_with_defaults() {
+    local -a packages=("$@")
+    if [ -t 0 ]; then
+        if [ "$EUID" -eq 0 ]; then
+            sudo -u "$REAL_USER" distrobox enter "$CONTAINER" -- sudo pacman -S --needed "${packages[@]}"
+        else
+            distrobox enter "$CONTAINER" -- sudo pacman -S --needed "${packages[@]}"
+        fi
+        return
+    fi
+
+    if [ "$EUID" -eq 0 ]; then
+        printf '1\n1\n' | sudo -u "$REAL_USER" distrobox enter "$CONTAINER" -- sudo pacman -S --needed --noconfirm "${packages[@]}"
+    else
+        printf '1\n1\n' | distrobox enter "$CONTAINER" -- sudo pacman -S --needed --noconfirm "${packages[@]}"
+    fi
+}
+
+install_package_runtime_dependencies() {
+    local package="$1"
+
+    case "$package" in
+        maltego)
+            echo "[*] [Alcor Router] Installing Maltego's Java X11 runtime dependency in '$CONTAINER'..."
+            if ! pacman_install_with_defaults libxtst; then
+                echo "[!] [Alcor Router] Failed to install libxtst required by Maltego." >&2
+                return 1
+            fi
+            ;;
+    esac
+}
+
+if [ "$ROUTE" = "algol" ]; then
+    echo "[*] [Alcor Router] Installing explicitly inside '$CONTAINER' container..."
+    if [ "$EUID" -eq 0 ]; then
+        exec sudo -u "$REAL_USER" distrobox enter "$CONTAINER" -- sudo pacman "${PACMAN_ARGS[@]}"
+    else
+        exec distrobox enter "$CONTAINER" -- sudo pacman "${PACMAN_ARGS[@]}"
+    fi
+fi
+
+if [ "$ROUTE" = "host" ]; then
+    echo "[*] [Alcor Router] Installing explicitly on the host system..."
+    if [ "$EUID" -ne 0 ] && queue_host_packages "${PACMAN_ARGS[@]}"; then
+        exit 0
+    fi
+    if [ "$EUID" -ne 0 ]; then
+        exec sudo /usr/bin/pacman "${PACMAN_ARGS[@]}"
+    else
+        exec /usr/bin/pacman "${PACMAN_ARGS[@]}"
+    fi
+fi
+
+if [ "$IS_SYNC" = true ]; then
+    declare -a PKGS=()
+    for arg in "${PACMAN_ARGS[@]}"; do
+        if [[ ! "$arg" =~ ^- ]]; then
+            PKGS+=("$arg")
+        fi
+    done
+
+    if [ "${#PKGS[@]}" -gt 0 ]; then
+        for PKG in "${PKGS[@]}"; do
+            if [ "$EUID" -eq 0 ]; then
+                REPO_INFO=$(sudo -u "$REAL_USER" distrobox enter "$CONTAINER" -- pacman -Si "$PKG" 2>/dev/null || true)
+            else
+                REPO_INFO=$(distrobox enter "$CONTAINER" -- pacman -Si "$PKG" 2>/dev/null || true)
+            fi
+
+            if [[ -n "$REPO_INFO" ]]; then
+                if [[ "$REPO_INFO" == *"blackarch"* ]] || \
+                   [[ "$REPO_INFO" == *"Groups"* && "$REPO_INFO" == *"blackarch-"* ]] || \
+                   ([[ "$REPO_INFO" =~ (security|scanner|packet|exploit|vulnerability|sniffer|crypto|injection|sqlmap) ]] && [[ ! "$PKG" =~ (firefox|chromium|libreoffice|jack) ]]); then
+
+                    if ! install_package_runtime_dependencies "$PKG"; then
+                        exit 1
+                    fi
+                    echo "[!] [Alcor Router] '$PKG' verified as a cyber security package!"
+                    echo "[*] Installing inside '$CONTAINER' container..."
+
+                    if ! pacman_install_with_defaults "$PKG"; then
+                        echo "[!] [Alcor Router] Failed to install '$PKG' inside '$CONTAINER'." >&2
+                        exit 1
+                    fi
+                    echo "[*] Exporting '$PKG' to the host system..."
+                    if ! PACKAGE_FILES="$(algol_command pacman -Ql "$PKG")"; then
+                        echo "[!] [Alcor Router] Could not list installed files for '$PKG'." >&2
+                        exit 1
+                    fi
+                    mapfile -t DESKTOP_FILES < <(
+                        printf '%s\n' "$PACKAGE_FILES" |
+                            awk '$NF ~ /\.desktop$/ { print $NF }'
+                    )
+                    MENU_CATEGORY="$(security_menu_category "$REPO_INFO")"
+                    for desktop_file in "${DESKTOP_FILES[@]}"; do
+                        if ! algol_command distrobox-export --app "$desktop_file"; then
+                            echo "[!] [Alcor Router] Failed to export desktop entry '$desktop_file' for '$PKG'." >&2
+                            exit 1
+                        fi
+                        exported_desktop="$REAL_HOME/.local/share/applications/algol-${desktop_file##*/}"
+                        if ! add_menu_category_to_desktop "$exported_desktop" "$MENU_CATEGORY"; then
+                            echo "[!] [Alcor Router] Failed to categorize exported desktop entry '$exported_desktop'." >&2
+                            exit 1
+                        fi
+                    done
+                    if ! export_package_binaries "$PKG" "$PACKAGE_FILES" "$MENU_CATEGORY"; then
+                        exit 1
+                    fi
+
+                    echo "[+] [Alcor Router] '$PKG' successfully installed and exported!"
+                    continue
+                fi
+            fi
+
+            if [[ -n "${ALCOR_HOST_PACKAGE_QUEUE:-}" ]]; then
+                if [[ -z "$REPO_INFO" ]]; then
+                    echo "[*] [Alcor Router] '$PKG' is not available in Algol repositories; queuing it for the host."
+                fi
+                queue_host_packages "$PKG"
+            fi
+        done
+
+        if [[ -n "${ALCOR_HOST_PACKAGE_QUEUE:-}" ]]; then
+            exit 0
+        fi
+    fi
+fi
+
+if [ "$EUID" -ne 0 ]; then
+    exec sudo /usr/bin/pacman "${PACMAN_ARGS[@]}"
+else
+    exec /usr/bin/pacman "${PACMAN_ARGS[@]}"
+fi

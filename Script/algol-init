@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+CONTAINER_NAME="algol"
+SELECTION_FILE="${ALCOR_SELECTION_FILE:-/etc/alcor/selection.txt}"
+PACMAN_ROUTER="${ALCOR_PACMAN_ROUTER:-/usr/local/bin/pacman}"
+SELECTED_PACKAGES=()
+
+log() {
+    echo "[Alcor] $*"
+}
+
+on_error() {
+    local exit_code=$?
+    echo "[!] [Alcor] Algol initialization failed at line ${BASH_LINENO[0]} (exit ${exit_code}): ${BASH_COMMAND}" >&2
+    exit "$exit_code"
+}
+trap on_error ERR
+
+for required_command in distrobox distrobox-create distrobox-enter podman; do
+    if ! command -v "$required_command" >/dev/null 2>&1; then
+        echo "[!] [Alcor] Required host command is missing: $required_command" >&2
+        exit 1
+    fi
+done
+
+read_packages() {
+    local packages_line
+    packages_line=$(sed -n 's/^PACKAGES://p' "$SELECTION_FILE" 2>/dev/null || true)
+    [[ -z "$packages_line" ]] && return 0
+
+    IFS=',' read -r -a SELECTED_PACKAGES <<< "$packages_line"
+    for package in "${SELECTED_PACKAGES[@]}"; do
+        [[ -n "$package" && "$package" != *[[:space:]]* && "$package" != *,* ]] || {
+            echo "[!] [Alcor] Invalid package name: $package" >&2
+            exit 1
+        }
+    done
+}
+
+install_selected_packages() {
+    [ "${#SELECTED_PACKAGES[@]}" -gt 0 ] || return 0
+    if [[ ! -x "$PACMAN_ROUTER" ]]; then
+        echo "[!] [Alcor] Package router is missing or not executable: $PACMAN_ROUTER" >&2
+        return 1
+    fi
+    log "Routing selected packages to the host or '$CONTAINER_NAME': ${SELECTED_PACKAGES[*]}"
+    local failed_packages=()
+    local package
+
+    for package in "${SELECTED_PACKAGES[@]}"; do
+        log "Routing selected package '$package' to its configured installation target..."
+        if ! "$PACMAN_ROUTER" -S --needed --noconfirm "$package"; then
+            echo "[!] [Alcor] Failed to install package '$package'." >&2
+            failed_packages+=("$package")
+        fi
+    done
+
+    if [ "${#failed_packages[@]}" -gt 0 ]; then
+        echo "[!] [Alcor] Package installation failed: ${failed_packages[*]}" >&2
+        return 23
+    fi
+}
+
+configure_blackarch_repo() {
+    log "Ensuring BlackArch repository inside '$CONTAINER_NAME'..."
+    distrobox-enter --name "$CONTAINER_NAME" -- bash -c '
+        set -e
+        if ! sudo grep -qE "^[[:space:]]*\[blackarch\][[:space:]]*$" /etc/pacman.conf; then
+            echo "[Alcor] BlackArch repository is missing; running the official strap script."
+            command -v curl >/dev/null 2>&1 || sudo pacman -S --needed --noconfirm curl
+            temp_dir="$(mktemp -d)"
+            trap "rm -rf \"$temp_dir\"" EXIT
+            curl -fsSL https://blackarch.org/strap.sh -o "$temp_dir/strap.sh"
+            chmod 0755 "$temp_dir/strap.sh"
+            sudo bash "$temp_dir/strap.sh"
+        fi
+        if ! sudo grep -qE "^[[:space:]]*\[blackarch\][[:space:]]*$" /etc/pacman.conf; then
+            echo "[!] [Alcor] BlackArch repository was not added to /etc/pacman.conf." >&2
+            exit 24
+        fi
+        echo "[Alcor] BlackArch repository is configured."
+        sudo pacman -Syy --noconfirm
+    '
+}
+
+read_packages
+
+if distrobox list | grep -qw "$CONTAINER_NAME"; then
+    log "'$CONTAINER_NAME' container already exists."
+    configure_blackarch_repo
+    install_selected_packages
+    log "'$CONTAINER_NAME' package installation completed."
+    exit 0
+fi
+
+log "Deploying 'algol' rootless cyber security environment..."
+distrobox-create --image docker.io/library/archlinux:latest --name "$CONTAINER_NAME" --yes
+
+log "Starting container for the first time..."
+distrobox-enter --name "$CONTAINER_NAME" -- echo "Container is active."
+
+log "Waiting for system services to settle..."
+sleep 2
+
+configure_blackarch_repo
+
+install_selected_packages
+
+log "'algol' environment, BlackArch repo, and selected packages successfully deployed!"

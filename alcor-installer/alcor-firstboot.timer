@@ -1,0 +1,10 @@
+[Unit]
+Description=Retry Alcor first-boot setup until it completes
+
+[Timer]
+OnBootSec=10s
+OnUnitInactiveSec=30s
+Unit=alcor-firstboot.service
+
+[Install]
+WantedBy=timers.target

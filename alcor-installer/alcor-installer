@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if [[ -f /home/alcor/alcor-installer/alcor_frontend.py ]]; then
+    exec python3 /home/alcor/alcor-installer/alcor_frontend.py "$@"
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec python3 "$SCRIPT_DIR/alcor_frontend.py" "$@"

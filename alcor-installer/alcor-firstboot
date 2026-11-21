@@ -1,0 +1,274 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+LOG_FILE="/var/log/alcor-firstboot.log"
+INITIALIZED_MARKER="/var/lib/alcor/initialized"
+SELECTION_FILE="/etc/alcor/selection.txt"
+
+install -d -m 0755 /var/log
+exec > >(tee -a "$LOG_FILE" | systemd-cat -t alcor-firstboot) 2>&1
+
+enable_graphical_desktop() {
+    echo "[*] [Alcor] Enabling the graphical desktop."
+    systemctl set-default graphical.target
+    systemctl enable --now lightdm.service
+}
+
+has_internet_connection() {
+    if command -v curl >/dev/null 2>&1; then
+        curl --silent --show-error --fail --location --head \
+            --connect-timeout 2 --max-time 3 \
+            --output /dev/null https://blackarch.org/
+    elif command -v wget >/dev/null 2>&1; then
+        wget --quiet --spider --timeout=3 https://blackarch.org/
+    elif command -v timeout >/dev/null 2>&1; then
+        timeout 2 bash -c 'exec 3<>/dev/tcp/blackarch.org/443' >/dev/null 2>&1
+    elif command -v ping >/dev/null 2>&1; then
+        ping -c 1 -W 1 1.1.1.1 >/dev/null 2>&1
+    else
+        echo "[!] [Alcor] Cannot check internet connectivity: curl, wget, timeout, and ping are unavailable." >&2
+        return 1
+    fi
+}
+
+# Find the installed desktop user before checking the network.
+# Desktop configuration must not depend on internet availability.
+ALCOR_USER="$(getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 && $1 != "nobody" { print $1; exit }')"
+
+if [[ -z "$ALCOR_USER" ]]; then
+    echo "[!] [Alcor] No installed regular user was found." >&2
+    exit 1
+fi
+
+USER_HOME="$(getent passwd "$ALCOR_USER" | cut -d: -f6)"
+ALCOR_UID="$(id -u "$ALCOR_USER")"
+
+if command -v loginctl >/dev/null 2>&1; then
+    loginctl enable-linger "$ALCOR_USER"
+fi
+
+systemctl start "user@${ALCOR_UID}.service"
+
+USER_RUNTIME_DIR="/run/user/$ALCOR_UID"
+
+for attempt in {1..30}; do
+    [[ -d "$USER_RUNTIME_DIR" ]] && break
+    sleep 1
+done
+
+if [[ ! -d "$USER_RUNTIME_DIR" ]]; then
+    echo "[!] [Alcor] Rootless container runtime directory was not created for $ALCOR_USER." >&2
+    exit 1
+fi
+
+run_as_alcor_user() {
+    runuser -u "$ALCOR_USER" -- env \
+        HOME="$USER_HOME" \
+        USER="$ALCOR_USER" \
+        LOGNAME="$ALCOR_USER" \
+        TERM=dumb \
+        XDG_RUNTIME_DIR="$USER_RUNTIME_DIR" \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=$USER_RUNTIME_DIR/bus" \
+        "$@"
+}
+
+# Use the system locale when generating XDG user-directory names.
+SYSTEM_LANG="C.UTF-8"
+
+if [[ -r /etc/locale.conf ]]; then
+    SYSTEM_LANG="$(. /etc/locale.conf; printf '%s' "${LANG:-C.UTF-8}")"
+fi
+
+configure_user_desktop() {
+    echo "[*] [Alcor] Configuring XDG folders, Thunar and GTK bookmarks for '$ALCOR_USER'."
+
+    run_as_alcor_user env LANG="$SYSTEM_LANG" bash -c '
+        if command -v xdg-user-dirs-update >/dev/null 2>&1; then
+            xdg-user-dirs-update --force
+        else
+            echo "[!] [Alcor] xdg-user-dirs-update is unavailable; skipping automatic XDG folder localization."
+        fi
+
+        if command -v xdg-mime >/dev/null 2>&1; then
+            xdg-mime default thunar.desktop inode/directory
+        else
+            echo "[!] [Alcor] xdg-mime is unavailable; skipping the Thunar default-handler setting."
+        fi
+
+        if command -v xdg-user-dir >/dev/null 2>&1; then
+            mkdir -p "$HOME/.config/gtk-3.0"
+            bookmark_file="$HOME/.config/gtk-3.0/bookmarks"
+            : > "$bookmark_file"
+
+            for key in DOCUMENTS MUSIC PICTURES VIDEOS DOWNLOAD; do
+                dir="$(xdg-user-dir "$key" 2>/dev/null || true)"
+
+                if [[ -n "$dir" && -d "$dir" ]]; then
+                    uri="$(python3 -c '"'"'from pathlib import Path; from urllib.parse import quote; import sys; print("file://" + quote(str(Path(sys.argv[1]).resolve()), safe="/"))'"'"' "$dir")"
+
+                    printf "%s\n" "$uri" >> "$bookmark_file"
+                fi
+            done
+        else
+            echo "[!] [Alcor] xdg-user-dir is unavailable; skipping GTK bookmark generation."
+        fi
+    '
+}
+
+cleanup_installer_artifacts() {
+    local cleanup_failed=0
+
+    echo "[*] [Alcor] Removing installer artifacts from '$ALCOR_USER'."
+
+    # Remove the installer directory and desktop shortcuts from the user.
+    if ! run_as_alcor_user bash -c '
+        set -e
+
+        rm -rf -- "$HOME/alcor-installer"
+
+        desktop_dir=""
+
+        if command -v xdg-user-dir >/dev/null 2>&1; then
+            desktop_dir="$(xdg-user-dir DESKTOP 2>/dev/null || true)"
+        fi
+
+        for dir in "$desktop_dir" "$HOME/Desktop" "$HOME/Masaüstü"; do
+            [[ -n "$dir" && -d "$dir" ]] || continue
+
+            rm -f -- \
+                "$dir/alcor-install.desktop" \
+                "$dir/alcor-installer.desktop" \
+                "$dir/Alcor Installer.desktop"
+        done
+    '; then
+        echo "[!] [Alcor] Failed to remove some installer files from '$ALCOR_USER'."
+        cleanup_failed=1
+    fi
+
+    # Remove the system-wide installer resources.
+    if ! rm -rf -- /opt/alcor-installer; then
+        echo "[!] [Alcor] Failed to remove /opt/alcor-installer."
+        cleanup_failed=1
+    fi
+
+    # Remove installer launchers and the default skeleton shortcut.
+    if ! rm -f -- \
+        /usr/local/bin/alcor-installer \
+        /usr/local/bin/alcor-install \
+        /etc/skel/Desktop/alcor-install.desktop; then
+
+        echo "[!] [Alcor] Failed to remove one or more system-wide installer launchers."
+        cleanup_failed=1
+    fi
+
+    if (( cleanup_failed == 0 )); then
+        echo "[+] [Alcor] Installer artifacts successfully removed."
+        return 0
+    fi
+
+    echo "[!] [Alcor] Installer cleanup completed with warnings."
+    return 1
+}
+
+# This part is local and runs even when the machine has no internet.
+configure_user_desktop
+enable_graphical_desktop
+
+if ! has_internet_connection; then
+    echo "[*] [Alcor] Internet is unavailable; Algol setup will retry in 30 seconds. The graphical desktop is ready."
+    exit 0
+fi
+
+if [[ ! -x /usr/local/bin/algol-init ]]; then
+    echo "[!] [Alcor] algol-init is not installed or executable at /usr/local/bin/algol-init." >&2
+    exit 1
+fi
+
+if ! command -v distrobox-create >/dev/null 2>&1 || \
+   ! command -v distrobox-enter >/dev/null 2>&1 || \
+   ! command -v podman >/dev/null 2>&1; then
+
+    echo "[!] [Alcor] Distrobox/Podman host commands are missing; refusing to route packages to the host as a fallback." >&2
+    exit 1
+fi
+
+run_as_alcor_user bash -c '
+    startup_files=("$HOME/.zshenv" "$HOME/.bashrc")
+
+    if [[ -f "$HOME/.bash_profile" ]]; then
+        startup_files+=("$HOME/.bash_profile")
+    else
+        startup_files+=("$HOME/.profile")
+    fi
+
+    for startup_file in "${startup_files[@]}"; do
+        touch "$startup_file"
+
+        if ! grep -qF "# Alcor: add exported commands to PATH" "$startup_file"; then
+            cat >> "$startup_file" <<'"'"'EOF'"'"'
+
+# Alcor: add exported commands to PATH
+case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) export PATH="$HOME/.local/bin:$PATH" ;;
+esac
+EOF
+        fi
+    done
+'
+
+if [[ -e "$INITIALIZED_MARKER" ]]; then
+    if run_as_alcor_user distrobox list --root | grep -qw algol; then
+        echo "[+] [Alcor] First-boot setup is already complete and the algol container exists."
+
+        cleanup_installer_artifacts || \
+            echo "[!] [Alcor] Could not remove every installer artifact."
+
+        systemctl disable --now alcor-firstboot.timer
+        exit 0
+    fi
+
+    echo "[!] [Alcor] Removing a stale initialization marker because the algol container is missing."
+    rm -f "$INITIALIZED_MARKER"
+fi
+
+HOST_PACKAGE_QUEUE="$(mktemp /run/alcor-host-packages.XXXXXX)"
+chown "$ALCOR_USER" "$HOST_PACKAGE_QUEUE"
+chmod 0600 "$HOST_PACKAGE_QUEUE"
+
+trap 'rm -f "$HOST_PACKAGE_QUEUE"' EXIT
+
+echo "[*] [Alcor] Running algol-init automatically as '$ALCOR_USER'."
+
+run_as_alcor_user \
+    ALCOR_SELECTION_FILE="$SELECTION_FILE" \
+    ALCOR_HOST_PACKAGE_QUEUE="$HOST_PACKAGE_QUEUE" \
+    /usr/local/bin/algol-init
+
+if ! run_as_alcor_user distrobox list --root | grep -qw algol; then
+    echo "[!] [Alcor] algol-init returned successfully but the 'algol' container is not present." >&2
+    exit 1
+fi
+
+mapfile -t HOST_PACKAGES < "$HOST_PACKAGE_QUEUE"
+
+if (( ${#HOST_PACKAGES[@]} > 0 )); then
+    echo "[*] [Alcor] Installing host-target packages with system privileges: ${HOST_PACKAGES[*]}"
+    /usr/bin/pacman -S --needed --noconfirm "${HOST_PACKAGES[@]}"
+fi
+
+/usr/bin/pacman -S --needed --noconfirm os-prober
+
+sed -i 's/GRUB_DISABLE_OS_PROBER=true/GRUB_DISABLE_OS_PROBER=false/' /etc/default/grub
+
+grub-mkconfig -o /boot/grub/grub.cfg
+
+install -d /var/lib/alcor
+touch "$INITIALIZED_MARKER"
+
+cleanup_installer_artifacts || \
+    echo "[!] [Alcor] Could not remove every installer artifact."
+
+systemctl disable --now alcor-firstboot.timer
+
+echo "[+] [Alcor] First-boot setup completed."

@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+INSTALLER_DIR="/home/alcor/alcor-installer"
+INSTALL_SCRIPT="$INSTALLER_DIR/install-alcor-calamares.sh"
+
+if [[ ! -f "$INSTALL_SCRIPT" ]]; then
+    echo "[!] Alcor installer directory was not found: $INSTALLER_DIR"
+    read -r -p "Press Enter to close..."
+    exit 1
+fi
+
+cd "$INSTALLER_DIR"
+if sudo bash "$INSTALL_SCRIPT"; then
+    status=0
+else
+    status=$?
+fi
+
+echo
+if [[ "$status" -eq 0 ]]; then
+    echo "[+] Alcor Calamares integration completed successfully."
+    echo "[*] Starting the Alcor installer GUI..."
+    exec python3 "$INSTALLER_DIR/alcor_frontend.py"
+else
+    echo "[!] Alcor Calamares integration failed with exit code $status."
+    read -r -p "Press Enter to close..."
+fi
+exit "$status"

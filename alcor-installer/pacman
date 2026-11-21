@@ -1,0 +1,788 @@
+#!/usr/bin/env bash
+set -e
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+SECURITY_TOOLS_FILE="${ALCOR_SECURITY_TOOLS_FILE:-$SCRIPT_DIR/security-tools.tsv}"
+# Rootful Algol uses Distrobox host integration; root inside can modify the host.
+CONTAINER="algol"
+# Rootful Distrobox is deliberately used for host-level networking. Tools exported
+# with --sudo run with host-root-equivalent privileges; package files still live
+# in Algol's container filesystem, but this is not a security sandbox.
+ROUTE="auto"
+PACMAN_ARGS=()
+PACMAN_INSTALL_EXTRA_ARGS=()
+
+for arg in "$@"; do
+    case "$arg" in
+        -host|--host)
+            ROUTE="host"
+            ;;
+        -algol|--algol)
+            ROUTE="algol"
+            ;;
+        *)
+            PACMAN_ARGS+=("$arg")
+            ;;
+    esac
+done
+
+if [ "$EUID" -eq 0 ] && [ -n "$SUDO_USER" ]; then
+    REAL_USER="$SUDO_USER"
+else
+    REAL_USER="$USER"
+fi
+
+if [ "$REAL_USER" = "root" ]; then
+    REAL_USER="alcor"
+fi
+REAL_HOME=""
+if command -v getent >/dev/null 2>&1; then
+    REAL_HOME="$(getent passwd "$REAL_USER" | cut -d: -f6)"
+fi
+if [ -z "$REAL_HOME" ]; then
+    REAL_HOME="$HOME"
+fi
+
+parse_pacman_flags() {
+    IS_SYNC=false
+    IS_REFRESH=false
+    IS_SYSUPGRADE=false
+    IS_REINSTALL=false
+    IS_SYNC_QUERY=false
+    IS_HELP=false
+
+    for arg in "$@"; do
+        case "$arg" in
+            -h|--help|-V|--version)
+                IS_HELP=true
+                ;;
+            --search|--info|--groups|--list|--print|--downloadonly|--clean|--owns)
+                IS_SYNC_QUERY=true
+                ;;
+            -S|--sync)
+                IS_SYNC=true
+                ;;
+            --refresh)
+                IS_REFRESH=true
+                ;;
+            --sysupgrade)
+                IS_SYSUPGRADE=true
+                ;;
+            --reinstall)
+                IS_REINSTALL=true
+                ;;
+            -* )
+                if [[ "$arg" != --* ]]; then
+                    case "$arg" in
+                        -*S*) IS_SYNC=true ;;
+                    esac
+                    case "$arg" in
+                        -*S*[siglpwco]*|-[siglpwco]*) IS_SYNC_QUERY=true ;;
+                    esac
+                    case "$arg" in
+                        -*y*) IS_REFRESH=true ;;
+                    esac
+                    case "$arg" in
+                        -*u*) IS_SYSUPGRADE=true ;;
+                    esac
+                fi
+                ;;
+        esac
+    done
+    return 0
+}
+
+parse_pacman_flags "${PACMAN_ARGS[@]}"
+
+if [[ "$IS_HELP" == false && "$IS_SYNC_QUERY" == false ]]; then
+    HAS_NOCONFIRM=false
+    for arg in "${PACMAN_ARGS[@]}"; do
+        [[ "$arg" == --noconfirm ]] && HAS_NOCONFIRM=true
+    done
+    [[ "$HAS_NOCONFIRM" == true ]] || PACMAN_ARGS+=(--noconfirm)
+fi
+
+# --reinstall is an Alcor Router convenience flag, not a native Pacman option.
+# Remove --needed with it so a same-version package is reinstalled.
+PACMAN_NATIVE_ARGS=()
+for arg in "${PACMAN_ARGS[@]}"; do
+    [[ "$arg" == "--reinstall" ]] && continue
+    if [[ "$IS_REINSTALL" == true && "$arg" == "--needed" ]]; then
+        continue
+    fi
+    PACMAN_NATIVE_ARGS+=("$arg")
+done
+
+queue_host_packages() {
+    local package
+    local found_package=false
+    [[ -n "${ALCOR_HOST_PACKAGE_QUEUE:-}" ]] || return 1
+    for package in "$@"; do
+        [[ "$package" == -* ]] && continue
+        found_package=true
+        if ! grep -Fxq -- "$package" "$ALCOR_HOST_PACKAGE_QUEUE"; then
+            printf '%s\n' "$package" >> "$ALCOR_HOST_PACKAGE_QUEUE"
+        fi
+    done
+    [[ "$found_package" == true ]] || return 1
+    echo "[*] [Alcor Router] Host packages queued for privileged first-boot installation."
+}
+
+security_menu_category() {
+    local package_info="$1"
+    local package_name package_groups package_description package_text
+
+    package_name="$(printf '%s\n' "$package_info" | sed -n 's/^Name[[:space:]]*:[[:space:]]*//p' | head -n 1)"
+    package_groups="$(printf '%s\n' "$package_info" | sed -n 's/^Groups[[:space:]]*:[[:space:]]*//p' | head -n 1)"
+    package_description="$(printf '%s\n' "$package_info" | sed -n 's/^Description[[:space:]]*:[[:space:]]*//p' | head -n 1)"
+    package_name="${package_name,,}"
+    package_groups="${package_groups,,}"
+    package_text="${package_name} ${package_description,,}"
+    if [[ -f "$SECURITY_TOOLS_FILE" ]]; then
+        local manifest_category
+        manifest_category="$(awk -F '\t' -v package="$package_name" '$1 == package { print $4; exit }' "$SECURITY_TOOLS_FILE")"
+        if [[ -n "$manifest_category" ]]; then
+            printf '%s\n' "$manifest_category"
+            return
+        fi
+    fi
+
+    case "$package_name" in
+        metasploit|metasploit-framework)
+            printf '%s\n' SiberZafiyet
+            return
+            ;;
+    esac
+
+    case "$package_groups" in
+        *blackarch-recon*|*blackarch-scanner*|*blackarch-networking*) printf '%s\n' SiberBilgi; return ;;
+        *blackarch-vuln*) printf '%s\n' SiberZafiyet; return ;;
+        *blackarch-webapp*) printf '%s\n' SiberWeb; return ;;
+        *blackarch-database*) printf '%s\n' SiberDatabase; return ;;
+        *blackarch-cracker*) printf '%s\n' SiberSifre; return ;;
+        *blackarch-wireless*) printf '%s\n' SiberWireless; return ;;
+        *blackarch-reversing*) printf '%s\n' SiberReverse; return ;;
+        *blackarch-exploitation*) printf '%s\n' SiberExploitation; return ;;
+        *blackarch-sniffer*|*blackarch-proxy*) printf '%s\n' SiberSniffing; return ;;
+        *blackarch-posting*) printf '%s\n' SiberPost; return ;;
+        *blackarch-forensic*) printf '%s\n' SiberForensics; return ;;
+        *blackarch-reporting*) printf '%s\n' SiberReporting; return ;;
+        *blackarch-social*) printf '%s\n' SiberSocial; return ;;
+    esac
+
+    case "$package_text" in
+        *wireless*|*wi-fi*|*wifi*|*802.11*) printf '%s\n' SiberWireless ;;
+        *forensic*|*volatility*|*autopsy*) printf '%s\n' SiberForensics ;;
+        *report*) printf '%s\n' SiberReporting ;;
+        *social-engineering*|*social\ engineering*|*phishing*) printf '%s\n' SiberSocial ;;
+        *post-exploit*|*post\ exploit*|*privilege\ escalation*|*privesc*|*persistence*) printf '%s\n' SiberPost ;;
+        *reverse-engineer*|*reverse\ engineer*|*disassembler*|*decompiler*|*reversing*) printf '%s\n' SiberReverse ;;
+        *sniff*|*spoof*|*packet\ capture*) printf '%s\n' SiberSniffing ;;
+        *password*|*cracker*|*hashcat*|*john-the-ripper*|*credential*) printf '%s\n' SiberSifre ;;
+        *database*|*sql*|*dbms*|*mongodb*) printf '%s\n' SiberDatabase ;;
+        *webapp*|*web-application*|*web\ application*|*burp*|*gobuster*|*ffuf*|*nikto*) printf '%s\n' SiberWeb ;;
+        *recon*|*osint*|*scanner*|*nmap*|*masscan*|*enumeration*) printf '%s\n' SiberBilgi ;;
+        *vulnerability*|*vuln*|*cve*) printf '%s\n' SiberZafiyet ;;
+        *exploit*|*payload*|*shellcode*) printf '%s\n' SiberExploitation ;;
+        *) printf '%s\n' SiberAlgol ;;
+    esac
+}
+
+security_menu_display_name() {
+    local package_name="${1,,}"
+    local command_name="${2,,}"
+    local display_name=""
+
+    if [[ -f "$SECURITY_TOOLS_FILE" ]]; then
+        display_name="$(awk -F '\t' -v package="$package_name" -v command="$command_name" '$1 == package && $2 == command { print $3; exit }' "$SECURITY_TOOLS_FILE")"
+        if [[ -z "$display_name" && -z "$command_name" ]]; then
+            display_name="$(awk -F '\t' -v package="$package_name" '$1 == package { print $3; exit }' "$SECURITY_TOOLS_FILE")"
+        fi
+    fi
+
+    printf '%s\n' "${display_name:-${2:-$1}}"
+}
+
+is_security_package() {
+    local package_name="${1,,}"
+    local package_info="$2"
+    local repository groups
+
+    if [[ -f "$SECURITY_TOOLS_FILE" ]] && awk -F '\t' -v package="$package_name" '$1 == package { found=1 } END { exit !found }' "$SECURITY_TOOLS_FILE"; then
+        return 0
+    fi
+
+    repository="$(printf '%s\n' "$package_info" | sed -n 's/^Repository[[:space:]]*:[[:space:]]*//p' | head -n 1)"
+    groups="$(printf '%s\n' "$package_info" | sed -n 's/^Groups[[:space:]]*:[[:space:]]*//p' | head -n 1)"
+    repository="${repository,,}"
+    groups="${groups,,}"
+
+    [[ "$repository" == blackarch ]] && return 0
+    [[ "$groups" =~ (^|[[:space:]])blackarch-[^[:space:]]+ ]] && return 0
+    return 1
+}
+
+blackarch_package_available() {
+    local package_name="${1,,}"
+    BLACKARCH_INFO="$(LC_ALL=C algol_command env LC_ALL=C pacman -Si "blackarch/$package_name" 2>/dev/null || true)"
+    [[ -n "$BLACKARCH_INFO" ]]
+}
+
+add_menu_category_to_desktop() {
+    local desktop_file="$1"
+    local menu_category="$2"
+    local display_name="${3:-}"
+    local temporary_file="${desktop_file}.tmp.$$"
+
+    [[ -f "$desktop_file" ]] || return 1
+    awk -v category="$menu_category" -v display_name="$display_name" '
+        /^Name\[[^]]+\]=/ && display_name != "" { next }
+        /^Name=/ && display_name != "" && !name_updated {
+            print "Name=" display_name
+            name_updated = 1
+            next
+        }
+        /^Categories=/ && !updated {
+            categories = $0
+            sub(/^Categories=/, "", categories)
+            pattern = "(^|;)" category "(;|$)"
+            if (categories !~ pattern) {
+                categories = category ";" categories
+            }
+            print "Categories=" categories
+            updated = 1
+            next
+        }
+        { print }
+        END {
+            if (display_name != "" && !name_updated) {
+                print "Name=" display_name
+            }
+            if (!updated) {
+                print "Categories=" category ";"
+            }
+        }
+    ' "$desktop_file" > "$temporary_file" || return 1
+    chmod 0644 "$temporary_file" && mv "$temporary_file" "$desktop_file"
+}
+
+ensure_user_local_bin_path() {
+    local startup_file
+    local -a startup_files=(.zshenv .bashrc)
+
+    if [[ -f "$REAL_HOME/.bash_profile" ]]; then
+        startup_files+=(.bash_profile)
+    else
+        startup_files+=(.profile)
+    fi
+
+    mkdir -p "$REAL_HOME"
+    for startup_file in "${startup_files[@]}"; do
+        startup_file="$REAL_HOME/$startup_file"
+        touch "$startup_file"
+        if ! grep -qF '# Alcor: add exported commands to PATH' "$startup_file"; then
+            cat >> "$startup_file" <<'EOF'
+
+# Alcor: add exported commands to PATH
+case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) export PATH="$HOME/.local/bin:$PATH" ;;
+esac
+EOF
+        fi
+        if [ "$EUID" -eq 0 ]; then
+            chown "$REAL_USER" "$startup_file"
+        fi
+    done
+}
+
+create_cli_menu_entry() {
+    local command_name="$1"
+    local exported_binary="$2"
+    local menu_category="$3"
+    local display_name="$4"
+    local applications_dir="$REAL_HOME/.local/share/applications"
+    local desktop_file="$applications_dir/alcor-${command_name}.desktop"
+    local escaped_binary="$exported_binary"
+
+    escaped_binary="${escaped_binary//\\/\\\\}"
+    escaped_binary="${escaped_binary//\"/\\\"}"
+    mkdir -p "$applications_dir"
+    cat > "$desktop_file" <<EOF
+[Desktop Entry]
+Type=Application
+Name=${display_name} (Algol)
+Comment=Open ${command_name} help in the Algol terminal
+TryExec=xfce4-terminal
+Exec=xfce4-terminal --hold --execute "${escaped_binary}" -h
+Terminal=false
+Categories=${menu_category};
+EOF
+    if [ "$EUID" -eq 0 ]; then
+        chown "$REAL_USER" "$applications_dir"
+        chown "$REAL_USER" "$desktop_file"
+    fi
+    chmod 0644 "$desktop_file"
+}
+
+export_package_binaries() {
+    local package="$1"
+    local package_files="$2"
+    local menu_category="$3"
+    local binary_path
+    local command_name
+    local display_name
+    local exported_binary
+    local exported_any=false
+    local executable_output
+    local -a binary_paths executable_paths
+
+    mapfile -t binary_paths < <(
+        printf '%s\n' "$package_files" |
+            awk '$NF ~ /^\/usr\/s?bin\/[^/]+$/ { print $NF }' |
+            sort -u
+    )
+    if (( ${#binary_paths[@]} > 0 )); then
+        if ! executable_output="$(algol_command bash -c '
+            for binary_path; do
+                [[ -x "$binary_path" ]] && printf "%s\n" "$binary_path"
+            done
+        ' bash "${binary_paths[@]}")"; then
+            echo "[!] [Alcor Router] Could not verify package executables inside '$CONTAINER'." >&2
+            return 1
+        fi
+        if [[ -n "$executable_output" ]]; then
+            mapfile -t executable_paths <<< "$executable_output"
+        fi
+    fi
+
+    if (( ${#executable_paths[@]} > 0 )); then
+        if [ "$EUID" -eq 0 ]; then
+            install -d -o "$REAL_USER" "$REAL_HOME/.local/bin"
+        else
+            mkdir -p "$REAL_HOME/.local/bin"
+        fi
+        if ! algol_command bash -c '
+            set -e
+            export_path="$1"
+            shift
+            for binary_path; do
+                distrobox-export --bin "$binary_path" --export-path "$export_path" --sudo
+            done
+        ' bash "$REAL_HOME/.local/bin" "${executable_paths[@]}"; then
+            echo "[!] [Alcor Router] Failed to export package executables from '$package'." >&2
+            return 1
+        fi
+    fi
+
+    for binary_path in "${executable_paths[@]}"; do
+        command_name="${binary_path##*/}"
+        exported_binary="$REAL_HOME/.local/bin/$command_name"
+        if [[ ! -x "$exported_binary" ]]; then
+            echo "[!] [Alcor Router] Distrobox reported success, but the exported command is missing or not executable: $exported_binary" >&2
+            return 1
+        fi
+        display_name="$(security_menu_display_name "$package" "$command_name")"
+        create_cli_menu_entry "$command_name" "$exported_binary" "$menu_category" "$display_name"
+        exported_any=true
+        echo "[+] [Alcor Router] Exported '$command_name' from '$package' with a menu launcher."
+    done
+
+    if [ "$exported_any" = false ] && [ "${#DESKTOP_FILES[@]}" -eq 0 ]; then
+        echo "[!] [Alcor Router] No executable in /usr/bin or desktop entry was found for '$package'." >&2
+        return 1
+    fi
+    ensure_user_local_bin_path
+}
+
+run_as_real_user() {
+    if [ "$EUID" -eq 0 ]; then
+        (cd "$REAL_HOME" && sudo -u "$REAL_USER" -- "$@")
+    else
+        (cd "$REAL_HOME" && "$@")
+    fi
+}
+
+algol_image_from_list() {
+    awk -F '|' -v name="$CONTAINER" '
+        NR > 1 {
+            container = $2
+            image = $4
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", container)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", image)
+            if (container == name) {
+                print image
+                exit
+            }
+        }
+    '
+}
+
+ensure_algol_container() {
+    local container_list container_image rootless_container_list rootless_image
+
+    if [[ "${ALGOL_CONTAINER_READY:-false}" == true ]]; then
+        return 0
+    fi
+
+    if ! container_list="$(run_as_real_user distrobox list --root --no-color)"; then
+        echo "[!] [Alcor Router] Could not list rootful Distrobox containers for '$REAL_USER'." >&2
+        return 1
+    fi
+
+    container_image="$(printf '%s\n' "$container_list" | algol_image_from_list)"
+    if [[ -z "$container_image" ]]; then
+        if ! rootless_container_list="$(run_as_real_user distrobox list --no-color)"; then
+            echo "[!] [Alcor Router] Could not check the existing rootless Distrobox store." >&2
+            return 1
+        fi
+
+        rootless_image="$(printf '%s\n' "$rootless_container_list" | algol_image_from_list)"
+        if [[ -n "$rootless_image" ]]; then
+            echo "[!] [Alcor Router] A rootless '$CONTAINER' exists, but this Router is configured for the rootful Algol." >&2
+            echo "[!] [Alcor Router] The rootless container was not changed. Run algol-init to create/configure rootful Algol." >&2
+        else
+            echo "[!] [Alcor Router] Rootful '$CONTAINER' is not initialized." >&2
+            echo "[!] [Alcor Router] Run algol-init first; Router will not create an incomplete container automatically." >&2
+        fi
+        return 1
+    fi
+
+    if [[ "${container_image,,}" != *archlinux* ]]; then
+        echo "[!] [Alcor Router] '$CONTAINER' uses '$container_image', not Arch Linux. Refusing to enter a non-Arch container." >&2
+        return 1
+    fi
+
+    ALGOL_CONTAINER_READY=true
+}
+
+algol_command() {
+    ensure_algol_container || return 1
+    run_as_real_user distrobox enter --root --name "$CONTAINER" -- "$@"
+}
+
+refresh_security_menu() {
+    local applications_dir="$REAL_HOME/.local/share/applications"
+    local installed_packages installed_package package command_name display_name menu_category
+    local package_files binary_path
+    local -A installed_package_set=() package_files_cache=()
+
+    if [[ ! -r "$SECURITY_TOOLS_FILE" ]]; then
+        echo "[!] [Alcor Router] Tool manifest not found: $SECURITY_TOOLS_FILE" >&2
+        return 1
+    fi
+    installed_packages="$(algol_command pacman -Qq)" || return 1
+    while IFS= read -r installed_package; do
+        [[ -n "$installed_package" ]] && installed_package_set["$installed_package"]=1
+    done <<< "$installed_packages"
+    mkdir -p "$applications_dir"
+
+    while IFS=$'\t' read -r -u 3 package command_name display_name menu_category; do
+        [[ -z "$package" ]] && continue
+        if [[ -z "${installed_package_set[$package]:-}" ]]; then
+            rm -f "$applications_dir/alcor-${command_name}.desktop"
+            continue
+        fi
+
+        if [[ -n "${package_files_cache[$package]+cached}" ]]; then
+            package_files="${package_files_cache[$package]}"
+        else
+            package_files="$(algol_command pacman -Ql "$package")" || return 1
+            package_files_cache["$package"]="$package_files"
+        fi
+        binary_path="$(printf '%s\n' "$package_files" | awk -v command="$command_name" '$NF ~ /^\/usr\/s?bin\// && $NF ~ ("/" command "$") { print $NF; exit }')"
+        if [[ -z "$binary_path" ]] || ! algol_command bash -c 'test -x "$1"' bash "$binary_path"; then
+            rm -f "$applications_dir/alcor-${command_name}.desktop"
+            continue
+        fi
+
+        if [ "$EUID" -eq 0 ]; then
+            install -d -o "$REAL_USER" "$REAL_HOME/.local/bin"
+        else
+            mkdir -p "$REAL_HOME/.local/bin"
+        fi
+        algol_command distrobox-export --bin "$binary_path" --export-path "$REAL_HOME/.local/bin" --sudo || return 1
+        create_cli_menu_entry "$command_name" "$REAL_HOME/.local/bin/$command_name" "$menu_category" "$display_name"
+    done 3< "$SECURITY_TOOLS_FILE"
+
+    ensure_empty_security_categories "$applications_dir"
+    update-desktop-database "$applications_dir"
+
+}
+
+pacman_install_with_defaults() {
+    local -a packages=("$@")
+    local -a install_flags=(--noconfirm)
+
+    if [[ "$IS_REINSTALL" != true ]]; then
+        install_flags+=(--needed)
+    fi
+
+    algol_command sudo pacman -S \
+        "${install_flags[@]}" \
+        "${PACMAN_INSTALL_EXTRA_ARGS[@]}" \
+        "${packages[@]}"
+}
+
+runtime_dependencies_for_package() {
+    case "$1" in
+        maltego) printf '%s\n' libxtst ;;
+        burpsuite) printf '%s\n' ttf-dejavu ;;
+    esac
+}
+
+ensure_empty_security_categories() {
+    local applications_dir="$1"
+    local menu_file="$REAL_HOME/.config/menus/xfce-applications.menu"
+    local category launcher marker has_launcher
+
+    [[ -r "$menu_file" ]] || return 0
+    while IFS= read -r category; do
+        [[ -z "$category" ]] && continue
+        marker="$applications_dir/alcor-empty-${category}.desktop"
+        has_launcher=false
+        for launcher in "$applications_dir"/*.desktop; do
+            [[ -f "$launcher" && "$launcher" != "$marker" ]] || continue
+            if grep -Eq "^Categories=([^;]*;)*${category}(;|$)" "$launcher"; then
+                has_launcher=true
+                break
+            fi
+        done
+
+        if [[ "$has_launcher" == true ]]; then
+            rm -f "$marker"
+        else
+            cat > "$marker" <<EOF
+[Desktop Entry]
+Type=Application
+Name=No installed tools
+Comment=No installed tools in this category
+Exec=xfce4-terminal --hold --execute /usr/bin/echo No tools are installed in this category.
+Icon=dialog-information
+Terminal=false
+Categories=${category};
+EOF
+            chmod 0644 "$marker"
+            if [ "$EUID" -eq 0 ]; then
+                chown "$REAL_USER" "$marker"
+            fi
+        fi
+    done < <(sed -n 's/.*<Category>\([^<]*\)<\/Category>.*/\1/p' "$menu_file" | sort -u)
+}
+
+if [[ "${PACMAN_ARGS[0]:-}" == "--refresh-security-menu" ]]; then
+    refresh_security_menu
+    exit $?
+fi
+
+if [ "$ROUTE" = "algol" ]; then
+    if [ "$IS_SYNC_QUERY" = true ] || [ "$IS_HELP" = true ]; then
+        algol_command pacman "${PACMAN_NATIVE_ARGS[@]}" || exit $?
+        exit 0
+    fi
+    echo "[*] [Alcor Router] Installing explicitly inside '$CONTAINER' container..."
+    if algol_command sudo pacman "${PACMAN_NATIVE_ARGS[@]}"; then
+        if [ "$IS_SYNC" = true ] && [ "$IS_SYNC_QUERY" = false ] && [ "$IS_HELP" = false ]; then
+            refresh_security_menu
+        fi
+    else
+        exit $?
+    fi
+    exit 0
+fi
+
+if [ "$IS_SYNC_QUERY" = true ] || [ "$IS_HELP" = true ]; then
+    exec /usr/bin/pacman "${PACMAN_NATIVE_ARGS[@]}"
+fi
+
+if [ "$ROUTE" = "host" ]; then
+    echo "[*] [Alcor Router] Installing explicitly on the host system..."
+    if [ "$IS_SYNC" = true ] && { [ "$IS_REFRESH" = true ] || [ "$IS_SYSUPGRADE" = true ]; }; then
+        HAS_HOST_SYNC_TARGETS=false
+        for arg in "${PACMAN_ARGS[@]}"; do
+            if [[ ! "$arg" =~ ^- ]]; then
+                HAS_HOST_SYNC_TARGETS=true
+                break
+            fi
+        done
+        if [[ "$HAS_HOST_SYNC_TARGETS" == false ]]; then
+            if [ "$EUID" -ne 0 ]; then
+                exec sudo /usr/bin/pacman "${PACMAN_NATIVE_ARGS[@]}"
+            else
+                exec /usr/bin/pacman "${PACMAN_NATIVE_ARGS[@]}"
+            fi
+        fi
+    fi
+    if [ "$EUID" -ne 0 ] && [ "$IS_SYNC_QUERY" = false ] && [ "$IS_HELP" = false ] && queue_host_packages "${PACMAN_ARGS[@]}"; then
+        exit 0
+    fi
+    if [ "$EUID" -ne 0 ]; then
+        exec sudo /usr/bin/pacman "${PACMAN_NATIVE_ARGS[@]}"
+    else
+        exec /usr/bin/pacman "${PACMAN_NATIVE_ARGS[@]}"
+    fi
+fi
+
+if [ "$IS_SYNC" = true ] && { [ "$IS_REFRESH" = true ] || [ "$IS_SYSUPGRADE" = true ]; }; then
+    HAS_TARGETS=false
+    for arg in "${PACMAN_ARGS[@]}"; do
+        if [[ ! "$arg" =~ ^- ]]; then
+            HAS_TARGETS=true
+            break
+        fi
+    done
+
+    if [[ "$HAS_TARGETS" == false ]]; then
+        echo "[*] [Alcor Router] Syncing/upgrading the host system..."
+        if [ "$EUID" -ne 0 ]; then
+            sudo /usr/bin/pacman "${PACMAN_NATIVE_ARGS[@]}" || exit $?
+        else
+            /usr/bin/pacman "${PACMAN_NATIVE_ARGS[@]}" || exit $?
+        fi
+        echo "[*] [Alcor Router] Syncing/upgrading '$CONTAINER'..."
+        algol_command sudo pacman "${PACMAN_NATIVE_ARGS[@]}" || exit $?
+        if [ "$IS_SYSUPGRADE" = true ]; then
+            refresh_security_menu
+        fi
+        exit 0
+    fi
+fi
+
+if [ "$IS_SYNC" = true ]; then
+    declare -a PKGS=() SECURITY_PACKAGES=() SECURITY_TARGETS=() SECURITY_REPO_INFOS=() HOST_PACKAGES=() HOST_ARGS=()
+    INSTALLED_SECURITY_PACKAGE=false
+    SKIP_NEXT=false
+    for arg in "${PACMAN_ARGS[@]}"; do
+        if [[ "$SKIP_NEXT" == true ]]; then
+            PACMAN_INSTALL_EXTRA_ARGS+=("$arg")
+            SKIP_NEXT=false
+            continue
+        fi
+
+        case "$arg" in
+            --overwrite)
+                PACMAN_INSTALL_EXTRA_ARGS+=("$arg")
+                SKIP_NEXT=true
+                ;;
+            --overwrite=*)
+                PACMAN_INSTALL_EXTRA_ARGS+=("$arg")
+                ;;
+            --reinstall|--needed|--noconfirm|-S|--sync)
+                ;;
+            -* )
+                ;;
+            *)
+                PKGS+=("$arg")
+                ;;
+        esac
+    done
+
+    if [ "${#PKGS[@]}" -gt 0 ]; then
+        for PKG in "${PKGS[@]}"; do
+            BLACKARCH_PACKAGE=false
+            PACKAGE_TARGET="$PKG"
+            if blackarch_package_available "$PKG"; then
+                BLACKARCH_PACKAGE=true
+                PACKAGE_TARGET="blackarch/$PKG"
+                REPO_INFO="$BLACKARCH_INFO"
+            else
+                REPO_INFO="$(LC_ALL=C algol_command env LC_ALL=C pacman -Si "$PKG" 2>/dev/null || true)"
+            fi
+
+            if [[ "$BLACKARCH_PACKAGE" == true ]] || is_security_package "$PKG" "$REPO_INFO"; then
+                echo "[!] [Alcor Router] '$PKG' routed to the '$CONTAINER' security environment."
+                SECURITY_PACKAGES+=("$PKG")
+                SECURITY_TARGETS+=("$PACKAGE_TARGET")
+                SECURITY_REPO_INFOS+=("$REPO_INFO")
+                while IFS= read -r dependency; do
+                    [[ -n "$dependency" ]] && SECURITY_TARGETS+=("$dependency")
+                done < <(runtime_dependencies_for_package "$PKG")
+                continue
+            fi
+
+            HOST_PACKAGES+=("$PKG")
+        done
+
+        if [ "${#SECURITY_TARGETS[@]}" -gt 0 ]; then
+            echo "[*] Installing ${#SECURITY_TARGETS[@]} security package(s) together inside '$CONTAINER'..."
+            if ! pacman_install_with_defaults "${SECURITY_TARGETS[@]}"; then
+                echo "[!] [Alcor Router] Security package installation failed inside '$CONTAINER'." >&2
+                exit 1
+            fi
+
+            for package_index in "${!SECURITY_PACKAGES[@]}"; do
+                PKG="${SECURITY_PACKAGES[$package_index]}"
+                REPO_INFO="${SECURITY_REPO_INFOS[$package_index]}"
+                echo "[*] Exporting '$PKG' to the host system..."
+                if [ "$EUID" -eq 0 ]; then
+                    install -d -o "$REAL_USER" -g "$(id -gn "$REAL_USER")" "$REAL_HOME/.local/share/applications"
+                else
+                    mkdir -p "$REAL_HOME/.local/share/applications"
+                fi
+                if ! PACKAGE_FILES="$(algol_command pacman -Ql "$PKG")"; then
+                    echo "[!] [Alcor Router] Could not list installed files for '$PKG'." >&2
+                    exit 1
+                fi
+                mapfile -t DESKTOP_FILES < <(
+                    printf '%s\n' "$PACKAGE_FILES" |
+                        awk '$NF ~ /\.desktop$/ { print $NF }'
+                )
+                MENU_CATEGORY="$(security_menu_category "$REPO_INFO")"
+                for desktop_file in "${DESKTOP_FILES[@]}"; do
+                    exported_desktop="$REAL_HOME/.local/share/applications/algol-${desktop_file##*/}"
+                    if [ "$EUID" -eq 0 ] && [[ -e "$exported_desktop" ]]; then
+                        chown "$REAL_USER:$(id -gn "$REAL_USER")" "$exported_desktop"
+                    fi
+                    if ! algol_command distrobox-export --app "$desktop_file" --sudo; then
+                        echo "[!] [Alcor Router] Failed to export desktop entry '$desktop_file' for '$PKG'." >&2
+                        exit 1
+                    fi
+                    exported_desktop="$REAL_HOME/.local/share/applications/algol-${desktop_file##*/}"
+                    display_name="$(security_menu_display_name "$PKG" "")"
+                    if ! add_menu_category_to_desktop "$exported_desktop" "$MENU_CATEGORY" "$display_name"; then
+                        echo "[!] [Alcor Router] Failed to categorize exported desktop entry '$exported_desktop'." >&2
+                        exit 1
+                    fi
+                done
+                if ! export_package_binaries "$PKG" "$PACKAGE_FILES" "$MENU_CATEGORY"; then
+                    exit 1
+                fi
+
+                INSTALLED_SECURITY_PACKAGE=true
+                echo "[+] [Alcor Router] '$PKG' successfully installed and exported!"
+            done
+
+        fi
+
+        if [[ "$INSTALLED_SECURITY_PACKAGE" == true ]]; then
+            ensure_empty_security_categories "$REAL_HOME/.local/share/applications"
+            update-desktop-database "$REAL_HOME/.local/share/applications"
+        fi
+
+        if [[ -n "${ALCOR_HOST_PACKAGE_QUEUE:-}" ]]; then
+            if [ "${#HOST_PACKAGES[@]}" -gt 0 ]; then
+                queue_host_packages "${HOST_PACKAGES[@]}"
+            fi
+            exit 0
+        fi
+
+        if [ "${#HOST_PACKAGES[@]}" -gt 0 ]; then
+            for arg in "${PACMAN_NATIVE_ARGS[@]}"; do
+                [[ "$arg" =~ ^- ]] && HOST_ARGS+=("$arg")
+            done
+            HOST_ARGS+=("${HOST_PACKAGES[@]}")
+            if [ "$EUID" -ne 0 ]; then
+                exec sudo /usr/bin/pacman "${HOST_ARGS[@]}"
+            else
+                exec /usr/bin/pacman "${HOST_ARGS[@]}"
+            fi
+        fi
+        exit 0
+    fi
+fi
+
+if [ "$EUID" -ne 0 ]; then
+    exec sudo /usr/bin/pacman "${PACMAN_NATIVE_ARGS[@]}"
+else
+    exec /usr/bin/pacman "${PACMAN_NATIVE_ARGS[@]}"
+fi

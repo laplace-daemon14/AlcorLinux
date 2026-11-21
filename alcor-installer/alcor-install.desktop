@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Prepare Alcor Installer
+Comment=Install and configure the Alcor Calamares integration
+Exec=xfce4-terminal --hold --command="/home/alcor/alcor-installer/alcor-install"
+TryExec=/home/alcor/alcor-installer/alcor-install
+Icon=/home/alcor/alcor-installer/red_alcor.png
+Terminal=false
+Categories=System;Installer;
+StartupNotify=true

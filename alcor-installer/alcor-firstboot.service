@@ -1,0 +1,8 @@
+[Unit]
+Description=Initialize the Alcor Algol environment
+
+[Service]
+Type=oneshot
+Environment=TERM=dumb
+ExecStart=/usr/local/sbin/alcor-firstboot
+TimeoutStartSec=infinity

@@ -2,9 +2,14 @@
 set -Eeuo pipefail
 
 CONTAINER_NAME="algol"
+CONTAINER_IMAGE="docker.io/library/archlinux:latest"
+CONTAINER_ADDITIONAL_PACKAGES="diffutils inetutils"
+ALCOR_ALGOL_INIT_VERSION="rootful-algol-20261121-1"
 SELECTION_FILE="${ALCOR_SELECTION_FILE:-/etc/alcor/selection.txt}"
 PACMAN_ROUTER="${ALCOR_PACMAN_ROUTER:-/usr/local/bin/pacman}"
 SELECTED_PACKAGES=()
+SELECTED_COMMUNITY_PACKAGES=()
+SELECTED_COMMUNITY_CLI_TOOLS=()
 
 log() {
     echo "[Alcor] $*"
@@ -12,10 +17,18 @@ log() {
 
 on_error() {
     local exit_code=$?
-    echo "[!] [Alcor] Algol initialization failed at line ${BASH_LINENO[0]} (exit ${exit_code}): ${BASH_COMMAND}" >&2
+    echo "[!] [Alcor] Algol initialization failed at line ${BASH_LINENO[0]} (exit ${exit_code})." >&2
     exit "$exit_code"
 }
 trap on_error ERR
+
+if [[ "$EUID" -eq 0 ]]; then
+    echo "[!] [Alcor] Run algol-init as your regular desktop user, without sudo." >&2
+    echo "[!] [Alcor] Distrobox's --root flag requests rootful container access itself." >&2
+    exit 1
+fi
+
+log "algol-init build: $ALCOR_ALGOL_INIT_VERSION"
 
 for required_command in distrobox distrobox-create distrobox-enter podman; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
@@ -38,6 +51,100 @@ read_packages() {
     done
 }
 
+read_community_packages() {
+    local packages_line
+    local package
+    local -a parsed=()
+    local -A seen=()
+
+    packages_line="$(sed -n 's/^COMMUNITY_ALGOL://p' "$SELECTION_FILE" 2>/dev/null || true)"
+    [[ -z "$packages_line" ]] && return 0
+
+    IFS=',' read -r -a parsed <<< "$packages_line"
+
+    for package in "${parsed[@]}"; do
+        case "$package" in
+            lightpacket|lightbpf|cza) ;;
+            *)
+                echo "[!] [Alcor] Unsupported Community package: $package" >&2
+                return 1
+                ;;
+        esac
+
+        if [[ -n "${seen[$package]:-}" ]]; then
+            continue
+        fi
+
+        seen["$package"]=1
+        case "$package" in
+            lightpacket|lightbpf)
+                SELECTED_COMMUNITY_PACKAGES+=("$package")
+                ;;
+            cza)
+                SELECTED_COMMUNITY_CLI_TOOLS+=("$package")
+                ;;
+        esac
+    done
+
+    log "Selected Algol Community Python libraries: ${SELECTED_COMMUNITY_PACKAGES[*]:-none}"
+    log "Selected Algol Community CLI tools: ${SELECTED_COMMUNITY_CLI_TOOLS[*]:-none}"
+}
+
+install_algol_base_packages() {
+    local -a packages=(starship)
+
+    log "Ensuring Algol base packages: ${packages[*]}"
+
+    if ! distrobox-enter --root --name "$CONTAINER_NAME" -- \
+        sudo pacman -S --needed --noconfirm "${packages[@]}"; then
+        echo "[!] [Alcor] Failed to install Algol base packages." >&2
+        return 1
+    fi
+
+    log "Verifying Starship inside '$CONTAINER_NAME'..."
+
+    if ! distrobox-enter --root --name "$CONTAINER_NAME" -- starship --version; then
+        echo "[!] [Alcor] Starship installation verification failed." >&2
+        return 1
+    fi
+
+    log "Algol base packages successfully installed and verified."
+}
+
+# A previous interrupted pacman transaction can leave /var/lib/pacman/db.lck
+# behind. Remove it only when no pacman process is running inside the container.
+cleanup_stale_pacman_lock() {
+    log "Checking pacman database lock inside '$CONTAINER_NAME'..."
+
+    if ! distrobox-enter --root --name "$CONTAINER_NAME" -- sudo bash -c '
+        set -eu
+        lock="/var/lib/pacman/db.lck"
+
+        if [[ ! -e "$lock" && ! -L "$lock" ]]; then
+            echo "[Alcor] No pacman lock found."
+            exit 0
+        fi
+
+        for comm_file in /proc/[0-9]*/comm; do
+            [[ -r "$comm_file" ]] || continue
+            process_name=""
+            IFS= read -r process_name < "$comm_file" || true
+
+            if [[ "$process_name" == "pacman" ]]; then
+                echo "[!] [Alcor] An active pacman process was detected; preserving db.lck." >&2
+                exit 1
+            fi
+        done
+
+        echo "[Alcor] Stale pacman lock detected; removing it."
+        rm -f -- "$lock"
+        echo "[Alcor] Pacman database lock cleaned successfully."
+    '; then
+        echo "[!] [Alcor] Pacman lock check or cleanup failed; initialization will stop." >&2
+        return 1
+    fi
+}
+
 install_selected_packages() {
     [ "${#SELECTED_PACKAGES[@]}" -gt 0 ] || return 0
     if [[ ! -x "$PACMAN_ROUTER" ]]; then
@@ -45,66 +152,416 @@ install_selected_packages() {
         return 1
     fi
     log "Routing selected packages to the host or '$CONTAINER_NAME': ${SELECTED_PACKAGES[*]}"
-    local failed_packages=()
-    local package
-
-    for package in "${SELECTED_PACKAGES[@]}"; do
-        log "Routing selected package '$package' to its configured installation target..."
-        if ! "$PACMAN_ROUTER" -S --needed --noconfirm "$package"; then
-            echo "[!] [Alcor] Failed to install package '$package'." >&2
-            failed_packages+=("$package")
-        fi
-    done
-
-    if [ "${#failed_packages[@]}" -gt 0 ]; then
-        echo "[!] [Alcor] Package installation failed: ${failed_packages[*]}" >&2
+    if ! "$PACMAN_ROUTER" -S --needed --noconfirm "${SELECTED_PACKAGES[@]}"; then
+        echo "[!] [Alcor] Failed to install selected packages: ${SELECTED_PACKAGES[*]}" >&2
         return 23
     fi
 }
 
+install_community_packages() {
+    if (( ${#SELECTED_COMMUNITY_PACKAGES[@]} == 0 )); then
+        log "No Community Python libraries selected for Algol."
+        return 0
+    fi
+
+    log "Installing Python and pip inside '$CONTAINER_NAME'..."
+
+    if ! distrobox-enter --root --name "$CONTAINER_NAME" -- \
+        sudo pacman -S --needed --noconfirm python python-pip; then
+        echo "[!] [Alcor] Failed to install Python and pip inside Algol." >&2
+        return 1
+    fi
+
+    log "Installing Community libraries inside Algol: ${SELECTED_COMMUNITY_PACKAGES[*]}"
+
+    if ! distrobox-enter --root --name "$CONTAINER_NAME" -- \
+        sudo python -m pip install \
+            --disable-pip-version-check \
+            --no-cache-dir \
+            --break-system-packages \
+            --prefix=/usr/local \
+            "${SELECTED_COMMUNITY_PACKAGES[@]}"; then
+        echo "[!] [Alcor] Community Python library installation failed." >&2
+        return 1
+    fi
+
+    # Arch's system Python uses /usr/lib/pythonX.Y/site-packages, while
+    # --prefix=/usr/local places third-party packages under
+    # /usr/local/lib/pythonX.Y/site-packages. Register that local directory
+    # with Python so imports and pip metadata lookups can both find it.
+    log "Registering the /usr/local Python package directory inside '$CONTAINER_NAME'..."
+
+    if ! distrobox-enter --root --name "$CONTAINER_NAME" -- sudo bash -c '
+        set -Eeuo pipefail
+        system_site="$(python -c "import sysconfig; print(sysconfig.get_path(\"purelib\"))")"
+        local_site="$(python -c "import sysconfig; print(sysconfig.get_path(\"purelib\", vars={\"base\": \"/usr/local\", \"platbase\": \"/usr/local\"}))")"
+
+        if [[ -z "$system_site" || -z "$local_site" || ! -d "$local_site" ]]; then
+            echo "[!] [Alcor] Could not determine the installed Python site-packages paths." >&2
+            exit 1
+        fi
+
+        install -d -m 0755 "$system_site"
+        printf "%s\n" "$local_site" > "$system_site/alcor-local-prefix.pth"
+        chmod 0644 "$system_site/alcor-local-prefix.pth"
+
+        echo "[Alcor] System site-packages: $system_site"
+        echo "[Alcor] Local site-packages:  $local_site"
+    '; then
+        echo "[!] [Alcor] Could not register /usr/local Python packages for the system interpreter." >&2
+        return 1
+    fi
+
+    log "Verifying Community Python libraries with the active Python interpreter..."
+
+    if ! distrobox-enter --root --name "$CONTAINER_NAME" -- \
+        sudo python -c '
+import importlib.metadata as metadata
+import sys
+
+failed = False
+for distribution in sys.argv[1:]:
+    try:
+        version = metadata.version(distribution)
+    except metadata.PackageNotFoundError:
+        print(f"[!] [Alcor] Python distribution not visible: {distribution}", file=sys.stderr)
+        failed = True
+    else:
+        print(f"[+] [Alcor] Verified {distribution}=={version}")
+
+raise SystemExit(1 if failed else 0)
+' "${SELECTED_COMMUNITY_PACKAGES[@]}"; then
+        echo "[!] [Alcor] Community library verification failed: installed metadata is not visible to the active Python interpreter." >&2
+        return 1
+    fi
+
+    log "Community Python libraries successfully installed and visible in Algol."
+}
+
+install_community_cli_tools() {
+    if (( ${#SELECTED_COMMUNITY_CLI_TOOLS[@]} == 0 )); then
+        log "No Community CLI tools selected for Algol."
+        return 0
+    fi
+
+    for community_tool in "${SELECTED_COMMUNITY_CLI_TOOLS[@]}"; do
+        case "$community_tool" in
+            cza)
+                log "Installing curl inside '$CONTAINER_NAME' for the CZA installer..."
+                distrobox-enter --root --name "$CONTAINER_NAME" -- \
+                    sudo pacman -S --needed --noconfirm curl
+
+                log "Downloading and syntax-checking the CZA installer inside '$CONTAINER_NAME'."
+                if ! distrobox-enter --root --name "$CONTAINER_NAME" -- sudo bash -c '
+                    set -Eeuo pipefail
+                    installer="$(mktemp)"
+                    cleanup() { rm -f "$installer"; }
+                    trap cleanup EXIT
+                    curl --fail --silent --show-error --location \
+                        --connect-timeout 10 --max-time 120 \
+                        "https://gitlab.com/ranonimolan/cza/-/raw/main/install.sh" \
+                        -o "$installer"
+                    bash -n "$installer"
+                    bash "$installer" --global
+                    command -v cza >/dev/null
+                '; then
+                    echo "[!] [Alcor] CZA installation or verification failed inside Algol." >&2
+                    return 1
+                fi
+                log "CZA installed system-wide inside '$CONTAINER_NAME'."
+                ;;
+            *)
+                echo "[!] [Alcor] Unsupported Algol Community CLI tool: $community_tool" >&2
+                return 1
+                ;;
+        esac
+    done
+}
+
 configure_blackarch_repo() {
     log "Ensuring BlackArch repository inside '$CONTAINER_NAME'..."
-    distrobox-enter --name "$CONTAINER_NAME" -- bash -c '
+    distrobox-enter --root --name "$CONTAINER_NAME" -- bash -c '
         set -e
-        if ! sudo grep -qE "^[[:space:]]*\[blackarch\][[:space:]]*$" /etc/pacman.conf; then
+
+        download_blackarch_key_file() {
+            local strap_path="$1"
+            local key_file="$2"
+            local trusted_fingerprints
+            local fingerprint
+            local trusted_key_found=false
+
+            curl -fsSL --connect-timeout 10 --max-time 60 \
+                "https://raw.githubusercontent.com/BlackArch/blackarch-keyring/master/blackarch.gpg" \
+                -o "$key_file"
+
+            trusted_fingerprints="$(sed -n "/^KEYRING_SIGNERS=/,/^$/p" "$strap_path" | grep -Eo "[[:xdigit:]]{40}" || true)"
+            if [[ -z "$trusted_fingerprints" ]]; then
+                echo "[!] [Alcor] Could not read trusted signer fingerprints from BlackArch strap.sh." >&2
+                return 1
+            fi
+
+            while IFS= read -r fingerprint; do
+                if gpg --batch --show-keys --with-colons --fingerprint "$key_file" 2>/dev/null | grep -Fq "$fingerprint"; then
+                    trusted_key_found=true
+                    break
+                fi
+            done <<< "$trusted_fingerprints"
+
+            if [[ "$trusted_key_found" != true ]]; then
+                echo "[!] [Alcor] The downloaded BlackArch key file does not contain a trusted signer key." >&2
+                return 1
+            fi
+        }
+
+        install_blackarch_pacman_keys() {
+            local strap_path="$1"
+            local key_file="$2"
+            local trusted_fingerprints
+            local fingerprint
+
+            trusted_fingerprints="$(sed -n "/^KEYRING_SIGNERS=/,/^$/p" "$strap_path" | grep -Eo "[[:xdigit:]]{40}" || true)"
+            if [[ -z "$trusted_fingerprints" ]]; then
+                echo "[!] [Alcor] Could not read trusted signer fingerprints from BlackArch strap.sh." >&2
+                return 1
+            fi
+
+            echo "[Alcor] Downloading and validating the official BlackArch key file."
+            download_blackarch_key_file "$strap_path" "$key_file"
+            echo "[Alcor] Importing BlackArch signing keys into pacman keyring."
+            sudo pacman-key --init
+            sudo pacman-key --add "$key_file"
+            while IFS= read -r fingerprint; do
+                echo "[Alcor] Locally trusting BlackArch signer $fingerprint."
+                sudo pacman-key --lsign-key "$fingerprint"
+                if ! sudo pacman-key --list-keys "$fingerprint" >/dev/null 2>&1; then
+                    echo "[!] [Alcor] BlackArch signer $fingerprint is not present in pacman keyring after import." >&2
+                    return 1
+                fi
+            done <<< "$trusted_fingerprints"
+            echo "[Alcor] BlackArch signing keys were imported and locally trusted."
+        }
+
+        patch_blackarch_strap_for_key_file() {
+            local strap_path="$1"
+
+            if ! grep -qF "Could not import downloaded BlackArch keyring" "$strap_path"; then
+                sed -i "/^  mkdir -m 700 \"\$GNUPGHOME\"$/a\\
+\\
+  if [ -n \"\${BLACKARCH_KEY_FILE:-}\" ]; then\\
+    gpg --batch --import \"\$BLACKARCH_KEY_FILE\" || err \"Could not import downloaded BlackArch keyring\"\\
+  fi" "$strap_path"
+            fi
+
+            if ! grep -qF "gpg --list-keys \"\$fpr\"" "$strap_path"; then
+                sed -i "/^  for fpr in \\\$KEYRING_SIGNERS; do$/a\\
+    gpg --list-keys \"\$fpr\" > /dev/null 2>&1 && continue" "$strap_path"
+            fi
+
+            if ! grep -qF "Could not import downloaded BlackArch keyring" "$strap_path" || \
+                ! grep -qF "gpg --list-keys \"\$fpr\"" "$strap_path"; then
+                echo "[!] [Alcor] Failed to prepare BlackArch strap.sh for the downloaded key file." >&2
+                return 1
+            fi
+        }
+
+        run_blackarch_strap_with_fallback() {
+            local strap_path="$1"
+            local key_file="$2"
+            local bootstrap_pid
+            local elapsed
+            local choice
+            local status
+
+            if ! command -v setsid >/dev/null 2>&1; then
+                echo "[!] [Alcor] setsid is required to safely stop a timed-out BlackArch setup attempt." >&2
+                return 1
+            fi
+
+            sudo setsid env PATH=/usr/bin:/bin bash "$strap_path" &
+            bootstrap_pid=$!
+
+            for ((elapsed = 0; elapsed < 90; elapsed++)); do
+                if ! kill -0 "$bootstrap_pid" 2>/dev/null; then
+                    if wait "$bootstrap_pid"; then
+                        return 0
+                    else
+                        return $?
+                    fi
+                fi
+                sleep 1
+            done
+
+            if ! kill -0 "$bootstrap_pid" 2>/dev/null; then
+                if wait "$bootstrap_pid"; then
+                    return 0
+                else
+                    return $?
+                fi
+            fi
+
+            if [[ ! -r /dev/tty || ! -w /dev/tty ]]; then
+                echo "[!] [Alcor] BlackArch setup is still running after 1 minute 30 seconds, but no terminal is available for a prompt; continuing the current attempt."
+                if wait "$bootstrap_pid"; then
+                    return 0
+                else
+                    return $?
+                fi
+            fi
+
+            while true; do
+                printf "[Alcor] BlackArch setup is still running after 1 minute 30 seconds. Download and import the BlackArch key file, then retry? [y/N]: " > /dev/tty
+                if ! IFS= read -r choice < /dev/tty; then
+                    choice=n
+                fi
+                case "$choice" in
+                    [yY]|[yY][eE][sS])
+                        if ! kill -0 "$bootstrap_pid" 2>/dev/null; then
+                            if wait "$bootstrap_pid"; then
+                                return 0
+                            else
+                                return $?
+                            fi
+                        fi
+                        kill -TERM -- "-$bootstrap_pid" 2>/dev/null || kill -TERM "$bootstrap_pid" 2>/dev/null || true
+                        wait "$bootstrap_pid" 2>/dev/null || true
+                        download_blackarch_key_file "$strap_path" "$key_file"
+                        patch_blackarch_strap_for_key_file "$strap_path"
+                        echo "[Alcor] Retrying BlackArch setup with the downloaded key file."
+                        sudo setsid env PATH=/usr/bin:/bin BLACKARCH_KEY_FILE="$key_file" bash "$strap_path" &
+                        bootstrap_pid=$!
+                        if wait "$bootstrap_pid"; then
+                            return 0
+                        else
+                            status=$?
+                            return "$status"
+                        fi
+                        ;;
+                    ""|[nN]|[nN][oO])
+                        if wait "$bootstrap_pid"; then
+                            return 0
+                        else
+                            return $?
+                        fi
+                        ;;
+                    *)
+                        printf "Please answer y or n. Continuing the current attempt unless you choose y.\n" > /dev/tty
+                        ;;
+                esac
+            done
+        }
+
+        ensure_blackarch_repo_config() {
+            local mirrorlist_path="/etc/pacman.d/blackarch-mirrorlist"
+
+            if [[ ! -s "$mirrorlist_path" ]]; then
+                echo "[Alcor] BlackArch strap did not configure its mirror list; fetching it directly."
+                curl -fsSL --connect-timeout 10 --max-time 60 \
+                    "https://blackarch.org/blackarch-mirrorlist" \
+                    -o "$temp_dir/blackarch-mirrorlist"
+                sudo install -m 0644 "$temp_dir/blackarch-mirrorlist" "$mirrorlist_path"
+            fi
+
+            if ! grep -qE "^[[:space:]]*\[blackarch\][[:space:]]*$" /etc/pacman.conf; then
+                printf "\n[blackarch]\nInclude = %s\n" "$mirrorlist_path" | sudo tee -a /etc/pacman.conf >/dev/null
+            fi
+        }
+
+        if ! grep -qE "^[[:space:]]*\[blackarch\][[:space:]]*$" /etc/pacman.conf; then
+            repo_was_configured=false
             echo "[Alcor] BlackArch repository is missing; running the official strap script."
             command -v curl >/dev/null 2>&1 || sudo pacman -S --needed --noconfirm curl
             temp_dir="$(mktemp -d)"
-            trap "rm -rf \"$temp_dir\"" EXIT
-            curl -fsSL https://blackarch.org/strap.sh -o "$temp_dir/strap.sh"
+            trap '\''rm -rf "$temp_dir"'\'' EXIT
+            curl -fsSL "https://blackarch.org/strap.sh" -o "$temp_dir/strap.sh"
             chmod 0755 "$temp_dir/strap.sh"
-            sudo bash "$temp_dir/strap.sh"
+            if ! grep -q "^pacman_upgrade()$" "$temp_dir/strap.sh"; then
+                echo "[!] [Alcor] BlackArch strap.sh has an unexpected upgrade function; refusing to run it without a non-interactive upgrade." >&2
+                exit 1
+            fi
+            sed -i "/^pacman_upgrade()$/,/^}/c\\
+pacman_upgrade()\\
+{\\
+    echo \"[!] Skipping full system upgrade as requested.\"\\
+}" "$temp_dir/strap.sh"
+            if ! grep -qF "Skipping full system upgrade as requested." "$temp_dir/strap.sh"; then
+                echo "[!] [Alcor] Failed to disable the BlackArch full system upgrade." >&2
+                exit 1
+            fi
+        else
+            repo_was_configured=true
+            temp_dir="$(mktemp -d)"
+            trap '\''rm -rf "$temp_dir"'\'' EXIT
+            curl -fsSL "https://blackarch.org/strap.sh" -o "$temp_dir/strap.sh"
         fi
-        if ! sudo grep -qE "^[[:space:]]*\[blackarch\][[:space:]]*$" /etc/pacman.conf; then
+
+        install_blackarch_pacman_keys "$temp_dir/strap.sh" "$temp_dir/blackarch.gpg"
+
+        if [[ "$repo_was_configured" != true ]]; then
+            echo "[Alcor] BlackArch keyring will be configured without upgrading the container."
+            if ! (cd / && run_blackarch_strap_with_fallback "$temp_dir/strap.sh" "$temp_dir/blackarch.gpg"); then
+                echo "[!] [Alcor] BlackArch setup failed while adding the repository." >&2
+                exit 1
+            fi
+        fi
+
+        ensure_blackarch_repo_config
+        if ! grep -qE "^[[:space:]]*\[blackarch\][[:space:]]*$" /etc/pacman.conf; then
             echo "[!] [Alcor] BlackArch repository was not added to /etc/pacman.conf." >&2
             exit 24
         fi
+
         echo "[Alcor] BlackArch repository is configured."
-        sudo pacman -Syy --noconfirm
+        echo "[Alcor] Synchronizing BlackArch package databases before checking the keyring package."
+        sudo pacman -Sy --noconfirm
+        if [[ ! -s /var/lib/pacman/sync/blackarch.db ]]; then
+            echo "[!] [Alcor] BlackArch database is still missing after pacman synchronization; refusing to continue." >&2
+            exit 1
+        fi
+        if ! sudo pacman -Q blackarch-keyring >/dev/null 2>&1; then
+            echo "[Alcor] Installing the BlackArch keyring package."
+            sudo pacman -S --needed --noconfirm blackarch-keyring
+        fi
     '
 }
 
 read_packages
+read_community_packages
 
-if distrobox list | grep -qw "$CONTAINER_NAME"; then
-    log "'$CONTAINER_NAME' container already exists."
+if distrobox list --root --no-color | grep -qw "$CONTAINER_NAME"; then
+    log "'$CONTAINER_NAME' rootful container already exists."
+    cleanup_stale_pacman_lock
     configure_blackarch_repo
+    install_algol_base_packages
     install_selected_packages
+    install_community_packages
+    install_community_cli_tools
     log "'$CONTAINER_NAME' package installation completed."
     exit 0
 fi
 
-log "Deploying 'algol' rootless cyber security environment..."
-distrobox-create --image docker.io/library/archlinux:latest --name "$CONTAINER_NAME" --yes
+if distrobox list --no-color | grep -qw "$CONTAINER_NAME"; then
+    echo "[!] [Alcor] An existing rootless '$CONTAINER_NAME' was found." >&2
+    echo "[!] [Alcor] It will be left untouched. A separate rootful container will be created; installed packages are NOT copied automatically." >&2
+fi
+
+log "Deploying rootful 'algol' with the Distrobox base utilities..."
+distrobox-create \
+    --root \
+    --image "$CONTAINER_IMAGE" \
+    --name "$CONTAINER_NAME" \
+    --additional-packages "$CONTAINER_ADDITIONAL_PACKAGES" \
+    --yes
 
 log "Starting container for the first time..."
-distrobox-enter --name "$CONTAINER_NAME" -- echo "Container is active."
+distrobox-enter --root --name "$CONTAINER_NAME" -- echo "Container is active."
 
 log "Waiting for system services to settle..."
 sleep 2
 
+cleanup_stale_pacman_lock
 configure_blackarch_repo
-
+install_algol_base_packages
 install_selected_packages
-
-log "'algol' environment, BlackArch repo, and selected packages successfully deployed!"
+install_community_packages
+install_community_cli_tools
+log "'algol' environment, BlackArch repo, selected packages, and Community components successfully deployed!"

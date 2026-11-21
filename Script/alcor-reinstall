@@ -1,0 +1,320 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+CONTAINER_NAME="algol"
+PKG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/alcor"
+PKG_FILE="$PKG_DIR/algol-packages.txt"
+REINSTALL_LOG="$PKG_DIR/alcor-reinstall.log"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+log() {
+    printf '[Alcor] %s\n' "$*"
+}
+
+warn() {
+    printf '[!] [Alcor] %s\n' "$*" >&2
+}
+
+fail() {
+    printf '[!] [Alcor] %s\n' "$*" >&2
+    exit 1
+}
+
+if [[ "$EUID" -eq 0 ]]; then
+    fail "Run this script as your regular desktop user, without sudo."
+fi
+
+for command_name in distrobox distrobox-enter; do
+    command -v "$command_name" >/dev/null 2>&1 || fail "Required command is missing: $command_name"
+done
+
+mkdir -p "$PKG_DIR"
+: > "$REINSTALL_LOG"
+chmod 0600 "$REINSTALL_LOG"
+
+resolve_algol_init() {
+    local candidate
+
+    candidate="$(command -v algol-init 2>/dev/null || true)"
+    if [[ -n "$candidate" && -x "$candidate" ]]; then
+        printf '%s\n' "$candidate"
+        return 0
+    fi
+
+    for candidate in \
+        /usr/local/bin/algol-init \
+        /usr/local/sbin/alcor-algol-init \
+        "$SCRIPT_DIR/algol-init" \
+        "$SCRIPT_DIR/../algol-init"; do
+        if [[ -x "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+ALGOL_INIT="$(resolve_algol_init)" || fail "Could not find executable algol-init. Install it or place it next to this script."
+
+rootful_container_exists() {
+    distrobox list --root --no-color | grep -qw -- "$CONTAINER_NAME"
+}
+
+# Run a command while showing its output and recording it in both an
+# attempt-specific log and the complete reinstall log. Preserve the command's
+# exit status (rather than tee's status).
+run_logged_command() {
+    local attempt_log="$1"
+    shift
+
+    local had_errexit=0
+    local -a pipeline_status=()
+    [[ "$-" == *e* ]] && had_errexit=1
+
+    set +e
+    "$@" 2>&1 | tee -a "$attempt_log" "$REINSTALL_LOG"
+    pipeline_status=("${PIPESTATUS[@]}")
+    if (( had_errexit )); then
+        set -e
+    fi
+
+    if (( ${pipeline_status[1]:-0} != 0 )); then
+        return "${pipeline_status[1]}"
+    fi
+    return "${pipeline_status[0]:-1}"
+}
+
+is_podman_exit_timeout() {
+    local log_file="$1"
+    grep -Fq 'timed out waiting for file' "$log_file"
+}
+
+# Retry only idempotent actions when Podman reports the known transient
+# conmon/exec-exit-file timeout. Pacman restore uses --needed; menu refresh
+# rewrites generated launchers and is safe to repeat.
+run_idempotent_with_retry() {
+    local label="$1"
+    shift
+
+    local attempt attempt_log status
+    local max_attempts=3
+
+    for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+        attempt_log="$(mktemp "$PKG_DIR/.alcor-reinstall-attempt.XXXXXX")"
+        log "$label (attempt $attempt/$max_attempts)..."
+
+        if run_logged_command "$attempt_log" "$@"; then
+            rm -f -- "$attempt_log"
+            return 0
+        else
+            status=$?
+        fi
+
+        if (( attempt < max_attempts )) && is_podman_exit_timeout "$attempt_log"; then
+            warn "$label hit a temporary Podman exec timeout; retrying safely."
+            rm -f -- "$attempt_log"
+            sleep 2
+            continue
+        fi
+
+        warn "$label failed (exit $status). Details are recorded in $REINSTALL_LOG"
+        rm -f -- "$attempt_log"
+        return "$status"
+    done
+
+    return 1
+}
+
+# algol-init is safe to rerun for this one specific failure: package
+# installation has already completed, but the Router timed out while checking
+# an executable for host export. The selected-package pacman command uses
+# --needed, so a retry does not reinstall packages that are already present.
+# Do not retry other algol-init failures because they may require intervention.
+is_recoverable_router_export_timeout() {
+    local log_file="$1"
+
+    is_podman_exit_timeout "$log_file" &&
+        grep -Fq "Could not verify package executables inside '$CONTAINER_NAME'." "$log_file" &&
+        grep -Fq 'Failed to install selected packages' "$log_file"
+}
+
+run_algol_init_with_recovery() {
+    local attempt attempt_log status
+    local max_attempts=3
+
+    for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+        attempt_log="$(mktemp "$PKG_DIR/.algol-init-attempt.XXXXXX")"
+        log "Running algol-init (attempt $attempt/$max_attempts)..."
+
+        if run_logged_command "$attempt_log" "$ALGOL_INIT"; then
+            rm -f -- "$attempt_log"
+            return 0
+        else
+            status=$?
+        fi
+
+        if (( attempt < max_attempts )) && is_recoverable_router_export_timeout "$attempt_log"; then
+            warn "Algol package installation reached the Router's executable-export check, but Podman timed out. The container is kept; retrying algol-init without recreating it."
+            rm -f -- "$attempt_log"
+            sleep 3
+            continue
+        fi
+
+        warn "algol-init failed (exit $status). The container has been left in place."
+        warn "Full output: $REINSTALL_LOG"
+        rm -f -- "$attempt_log"
+        return "$status"
+    done
+
+    warn "algol-init did not complete after $max_attempts attempts. The container has been left in place."
+    warn "Full output: $REINSTALL_LOG"
+    return 1
+}
+
+save_installed_packages() {
+    local temp_file
+
+    rootful_container_exists || fail "Cannot export packages: rootful '$CONTAINER_NAME' container does not exist."
+
+    mkdir -p "$PKG_DIR"
+    temp_file="$(mktemp "$PKG_DIR/.algol-packages.XXXXXX")"
+
+    log "Exporting explicitly installed package names from '$CONTAINER_NAME'..."
+    if ! distrobox-enter --root --name "$CONTAINER_NAME" -- pacman -Qqe > "$temp_file"; then
+        rm -f -- "$temp_file"
+        fail "Could not export the package list. The existing saved list was left untouched."
+    fi
+
+    if ! LC_ALL=C sort -u "$temp_file" -o "$temp_file"; then
+        rm -f -- "$temp_file"
+        fail "Could not sort the exported package list."
+    fi
+
+    chmod 0600 "$temp_file"
+    mv -f -- "$temp_file" "$PKG_FILE"
+    log "Saved $(grep -cve '^[[:space:]]*$' "$PKG_FILE" || true) package name(s) to $PKG_FILE"
+}
+
+read_saved_packages() {
+    local line
+    local number=0
+    local -a parsed=()
+
+    [[ -f "$PKG_FILE" ]] || fail "Saved package list does not exist: $PKG_FILE"
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        ((number += 1))
+        line="${line%%#*}"
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line%"${line##*[![:space:]]}"}"
+        [[ -z "$line" ]] && continue
+
+        if [[ ! "$line" =~ ^[[:alnum:]@._+-]+$ ]]; then
+            fail "Invalid package entry on line $number of $PKG_FILE: $line"
+        fi
+        parsed+=("$line")
+    done < "$PKG_FILE"
+
+    SAVED_PACKAGES=("${parsed[@]}")
+}
+
+SAVED_PACKAGES=()
+
+printf '[*] Package snapshot: %s\n' "$PKG_FILE"
+read -r -p 'Do you already have a saved/edited package list to restore? [y/N]: ' use_saved || use_saved=''
+
+case "$use_saved" in
+    y|Y|yes|YES|Yes)
+        if [[ ! -f "$PKG_FILE" ]]; then
+            if rootful_container_exists; then
+                save_installed_packages
+                printf '\n[!] A package list was created, but no saved list existed to edit.\n'
+                printf '[!] Edit it, then run alcor-reinstall again and answer y.\n'
+                printf '    Example: nano "%s"\n' "$PKG_FILE"
+                exit 0
+            fi
+            fail "No saved package list exists and no rootful '$CONTAINER_NAME' container is available to export one."
+        fi
+        log "Using the existing saved package list."
+        ;;
+    n|N|no|NO|No|'')
+        if rootful_container_exists; then
+            save_installed_packages
+        elif [[ -f "$PKG_FILE" ]]; then
+            warn "No current rootful '$CONTAINER_NAME' container exists; keeping the previous saved package list."
+        else
+            : > "$PKG_FILE"
+            chmod 0600 "$PKG_FILE"
+            log "No existing container or saved package list; starting with an empty restore list."
+        fi
+
+        read -r -p 'Do you want to edit the package list before reinstalling? [y/N]: ' edit_list || edit_list=''
+        case "$edit_list" in
+            y|Y|yes|YES|Yes)
+                printf '\nEdit this file, save it, then run alcor-reinstall again and answer y to the first prompt:\n%s\n' "$PKG_FILE"
+                printf 'Example: nano "%s"\n' "$PKG_FILE"
+                exit 0
+                ;;
+            n|N|no|NO|No|'') ;;
+            *) fail "Please answer y or n." ;;
+        esac
+        ;;
+    *)
+        fail "Please answer y or n."
+        ;;
+esac
+
+read_saved_packages
+
+if (( ${#SAVED_PACKAGES[@]} > 0 )); then
+    log "Packages queued for restoration (${#SAVED_PACKAGES[@]}): ${SAVED_PACKAGES[*]}"
+else
+    log "The saved package list is empty; only algol-init's standard selections will be installed."
+fi
+
+if rootful_container_exists; then
+    printf "[?] This will permanently remove and recreate the rootful '%s' container.\n" "$CONTAINER_NAME"
+    read -r -p 'Continue with reinstall? [y/N]: ' confirm || confirm=''
+    case "$confirm" in
+        y|Y|yes|YES|Yes) ;;
+        *) log "Cancelled; the container was not changed."; exit 0 ;;
+    esac
+
+    log "Removing rootful '$CONTAINER_NAME' container..."
+    distrobox rm --root --force "$CONTAINER_NAME"
+    if rootful_container_exists; then
+        fail "The rootful '$CONTAINER_NAME' container still exists after the removal command."
+    fi
+else
+    log "No existing rootful '$CONTAINER_NAME' container found; creating it from scratch."
+fi
+
+if ! run_algol_init_with_recovery; then
+    fail "Algol initialization did not complete. The partially initialized container was preserved for diagnosis; see $REINSTALL_LOG"
+fi
+
+rootful_container_exists || fail "algol-init finished, but the rootful '$CONTAINER_NAME' container was not found."
+
+if (( ${#SAVED_PACKAGES[@]} > 0 )); then
+    log "Restoring saved packages inside '$CONTAINER_NAME'..."
+    run_idempotent_with_retry \
+        "Saved package restoration" \
+        distrobox-enter --root --name "$CONTAINER_NAME" -- \
+        sudo pacman -S --needed --noconfirm "${SAVED_PACKAGES[@]}" \
+        || fail "Could not restore the saved package list. See $REINSTALL_LOG"
+else
+    log "Skipping package restoration because the saved list is empty."
+fi
+
+if command -v pacman >/dev/null 2>&1; then
+    log "Refreshing Alcor security-menu launchers..."
+    if ! run_idempotent_with_retry "Security-menu refresh" pacman --refresh-security-menu; then
+        warn "Package restoration succeeded, but the security-menu refresh did not complete. See $REINSTALL_LOG"
+    fi
+else
+    warn "The Alcor pacman router was not found; skipped security-menu refresh."
+fi
+
+log "Algol reinstall completed successfully."
+log "Diagnostic log: $REINSTALL_LOG"

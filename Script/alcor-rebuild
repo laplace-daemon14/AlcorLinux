@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+CONTAINER_NAME="algol"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+log() {
+    printf '[Alcor] %s\n' "$*"
+}
+
+fail() {
+    printf '[!] [Alcor] %s\n' "$*" >&2
+    exit 1
+}
+
+if [[ "$EUID" -eq 0 ]]; then
+    fail "Run this script as your regular desktop user, without sudo."
+fi
+
+for command_name in distrobox distrobox-enter; do
+    command -v "$command_name" >/dev/null 2>&1 || fail "Required command is missing: $command_name"
+done
+
+resolve_algol_init() {
+    local candidate
+
+    candidate="$(command -v algol-init 2>/dev/null || true)"
+    if [[ -n "$candidate" && -x "$candidate" ]]; then
+        printf '%s\n' "$candidate"
+        return 0
+    fi
+
+    for candidate in \
+        /usr/local/bin/algol-init \
+        /usr/local/sbin/alcor-algol-init \
+        "$SCRIPT_DIR/algol-init" \
+        "$SCRIPT_DIR/../algol-init"; do
+        if [[ -x "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+ALGOL_INIT="$(resolve_algol_init)" || fail "Could not find executable algol-init. Install it or place it next to this script."
+
+rootful_container_exists() {
+    distrobox list --root --no-color | grep -qw -- "$CONTAINER_NAME"
+}
+
+if rootful_container_exists; then
+    printf "[?] This will permanently remove the rootful '%s' container and recreate it.\n" "$CONTAINER_NAME"
+    printf '[?] Packages not selected by algol-init will NOT be restored.\n'
+    read -r -p 'Continue? [y/N]: ' answer || answer=''
+    case "$answer" in
+        y|Y|yes|YES|Yes) ;;
+        *) log "Cancelled; no changes made."; exit 0 ;;
+    esac
+
+    log "Removing rootful '$CONTAINER_NAME' container..."
+    distrobox rm --root --force "$CONTAINER_NAME"
+
+    if rootful_container_exists; then
+        fail "The rootful '$CONTAINER_NAME' container still exists after the removal command."
+    fi
+else
+    log "No existing rootful '$CONTAINER_NAME' container found; nothing to remove."
+fi
+
+log "Running algol-init: $ALGOL_INIT"
+"$ALGOL_INIT"
+
+if ! rootful_container_exists; then
+    fail "algol-init finished, but the rootful '$CONTAINER_NAME' container was not found."
+fi
+
+log "Fresh '$CONTAINER_NAME' container has been created successfully."

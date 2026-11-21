@@ -1,0 +1,445 @@
+amass	amass	Amass	SiberBilgi
+arp-scan	arp-scan	ARP Scan	SiberBilgi
+dnsenum	dnsenum	DNSenum	SiberBilgi
+dnsrecon	dnsrecon	DNSRecon	SiberBilgi
+fierce	fierce	Fierce DNS	SiberBilgi
+fping	fping	Fping	SiberBilgi
+masscan	masscan	Masscan	SiberBilgi
+netdiscover	netdiscover	Netdiscover	SiberBilgi
+nmap	nmap	Nmap	SiberBilgi
+recon-ng	recon-ng	Recon-ng	SiberBilgi
+subfinder	subfinder	Subfinder	SiberBilgi
+theharvester	theHarvester	theHarvester	SiberBilgi
+whois	whois	WHOIS	SiberBilgi
+dnsx	dnsx	dnsx	SiberBilgi
+naabu	naabu	Naabu	SiberBilgi
+httpx	httpx	HTTPx	SiberBilgi
+gau	gau	GetAllURLs	SiberBilgi
+waybackurls	waybackurls	Wayback URLs	SiberBilgi
+hakrawler	hakrawler	Hakrawler	SiberBilgi
+whatweb	whatweb	WhatWeb	SiberBilgi
+nuclei	nuclei	Nuclei	SiberZafiyet
+lynis	lynis	Lynis Audit	SiberZafiyet
+nikto	nikto	Nikto	SiberZafiyet
+wapiti	wapiti	Wapiti	SiberZafiyet
+openvas-scanner	openvas	OpenVAS Scanner	SiberZafiyet
+testssl.sh	testssl.sh	testssl.sh	SiberZafiyet
+trivy	trivy	Trivy	SiberZafiyet
+grype	grype	Grype	SiberZafiyet
+checksec	checksec	checksec	SiberZafiyet
+prowler	prowler	Prowler	SiberZafiyet
+semgrep	semgrep	Semgrep	SiberZafiyet
+osv-scanner	osv-scanner	OSV Scanner	SiberZafiyet
+ffuf	ffuf	ffuf	SiberWeb
+gobuster	gobuster	Gobuster	SiberWeb
+feroxbuster	feroxbuster	Feroxbuster	SiberWeb
+dirb	dirb	DIRB	SiberWeb
+dirsearch	dirsearch	Dirsearch	SiberWeb
+sqlmap	sqlmap	SQLmap	SiberWeb
+wpscan	wpscan	WPScan	SiberWeb
+zaproxy	zaproxy	OWASP ZAP	SiberWeb
+burpsuite	burpsuite	Burp Suite	SiberWeb
+wafw00f	wafw00f	Wafw00f	SiberWeb
+wfuzz	wfuzz	Wfuzz	SiberWeb
+xsser	xsser	XSSer	SiberWeb
+arjun	arjun	Arjun Parameters	SiberWeb
+dalfox	dalfox	Dalfox XSS	SiberWeb
+katana	katana	Katana Crawler	SiberWeb
+commix	commix	Commix	SiberWeb
+tplmap	tplmap	TPLmap	SiberWeb
+skipfish	skipfish	Skipfish	SiberWeb
+sqlninja	sqlninja	SQLninja	SiberDatabase
+oscanner	oscanner	Oscanner	SiberDatabase
+sidguesser	sidguess	SIDGuesser	SiberDatabase
+tnscmd10g	tnscmd10g	TNSCmd10g	SiberDatabase
+odat	odat.py	ODAT Oracle Assessment	SiberDatabase
+nosqlmap	nosqlmap	NoSQLMap	SiberDatabase
+mongo-tools	mongosh	MongoDB Shell	SiberDatabase
+redis	redis-cli	Redis CLI	SiberDatabase
+hashcat	hashcat	Hashcat	SiberSifre
+john	john	John the Ripper	SiberSifre
+hydra	hydra	THC Hydra	SiberSifre
+medusa	medusa	Medusa	SiberSifre
+ncrack	ncrack	Ncrack	SiberSifre
+crunch	crunch	Crunch Wordlist Generator	SiberSifre
+hashid	hashid	Hash ID	SiberSifre
+hash-identifier	hash-identifier	Hash Identifier	SiberSifre
+fcrackzip	fcrackzip	Fcrackzip	SiberSifre
+pdfcrack	pdfcrack	PDFCrack	SiberSifre
+rarcrack	rarcrack	RarCrack	SiberSifre
+ophcrack	ophcrack	Ophcrack	SiberSifre
+patator	patator	Patator	SiberSifre
+chntpw	chntpw	CHNTPW	SiberSifre
+rainbowcrack	rcrack	RainbowCrack	SiberSifre
+aircrack-ng	aircrack-ng	Aircrack-ng	SiberWireless
+reaver	reaver	Reaver WPS	SiberWireless
+wifite	wifite	Wifite	SiberWireless
+kismet	kismet	Kismet Wireless	SiberWireless
+hcxdumptool	hcxdumptool	hcxdumptool	SiberWireless
+hcxtools	hcxpcapngtool	hcxtools PCAPNG	SiberWireless
+mdk4	mdk4	MDK4	SiberWireless
+pixiewps	pixiewps	Pixiewps	SiberWireless
+bully	bully	Bully WPS	SiberWireless
+wavemon	wavemon	Wavemon	SiberWireless
+bettercap	bettercap	Bettercap Wireless	SiberWireless
+ghidra	ghidra	Ghidra	SiberReverse
+radare2	r2	Radare2	SiberReverse
+rizin	rizin	Rizin	SiberReverse
+gdb	gdb	GNU Debugger	SiberReverse
+strace	strace	strace	SiberReverse
+ltrace	ltrace	ltrace	SiberReverse
+apktool	apktool	Apktool	SiberReverse
+jadx	jadx	JADX	SiberReverse
+dex2jar	d2j-dex2jar	Dex2jar	SiberReverse
+ropper	ropper	Ropper	SiberReverse
+ropgadget	ROPgadget	ROPgadget	SiberReverse
+pwninit	pwninit	pwninit	SiberReverse
+patchelf	patchelf	Patch ELF	SiberReverse
+angr	angr	angr	SiberReverse
+metasploit	msfconsole	Metasploit Framework	SiberExploitation
+exploitdb	searchsploit	SearchSploit	SiberExploitation
+setoolkit	setoolkit	Social-Engineer Toolkit	SiberSocial
+beef-xss	beef-xss	BeEF Framework	SiberExploitation
+pwntools	pwn	Pwntools	SiberExploitation
+impacket	smbserver.py	Impacket SMB Server	SiberPost
+routersploit	rsf	RouterSploit	SiberExploitation
+msfpc	msfpc	MSFvenom Payload Creator	SiberExploitation
+wireshark-qt	wireshark	Wireshark	SiberSniffing
+tcpdump	tcpdump	Tcpdump	SiberSniffing
+tshark	tshark	TShark	SiberSniffing
+ettercap	ettercap	Ettercap	SiberSniffing
+mitmproxy	mitmproxy	mitmproxy	SiberSniffing
+dsniff	arpspoof	Arpspoof	SiberSniffing
+dsniff	dsniff	Dsniff	SiberSniffing
+netsniff-ng	netsniff-ng	netsniff-ng	SiberSniffing
+ngrep	ngrep	Ngrep	SiberSniffing
+tcpflow	tcpflow	TCPflow	SiberSniffing
+responder	responder	Responder	SiberSniffing
+macchanger	macchanger	MAC Changer	SiberSniffing
+sslsplit	sslsplit	SSLsplit	SiberSniffing
+netexec	nxc	NetExec	SiberPost
+crackmapexec	crackmapexec	CrackMapExec	SiberPost
+evil-winrm	evil-winrm	Evil-WinRM	SiberPost
+bloodhound-python	bloodhound-python	BloodHound Python	SiberPost
+smbmap	smbmap	SMBMap	SiberPost
+enum4linux-ng	enum4linux-ng	Enum4linux-ng	SiberPost
+chisel	chisel	Chisel Tunneling	SiberPost
+ligolo-ng	ligolo-ng	Ligolo-ng	SiberPost
+pspy	pspy	pspy Process Monitor	SiberPost
+impacket	secretsdump.py	Impacket Secretsdump	SiberPost
+impacket	psexec.py	Impacket PsExec	SiberPost
+impacket	wmiexec.py	Impacket WMIExec	SiberPost
+impacket	GetNPUsers.py	Impacket GetNPUsers	SiberPost
+autopsy	autopsy	Autopsy Forensics	SiberForensics
+sleuthkit	mmls	Sleuth Kit mmls	SiberForensics
+sleuthkit	fls	Sleuth Kit fls	SiberForensics
+volatility3	vol	Volatility 3	SiberForensics
+foremost	foremost	Foremost File Carving	SiberForensics
+scalpel	scalpel	Scalpel File Carving	SiberForensics
+bulk-extractor	bulk_extractor	Bulk Extractor	SiberForensics
+exiftool	exiftool	ExifTool	SiberForensics
+binwalk	binwalk	Binwalk	SiberForensics
+yara	yara	YARA	SiberForensics
+testdisk	photorec	PhotoRec	SiberForensics
+testdisk	testdisk	TestDisk	SiberForensics
+ddrescue	ddrescue	GNU ddrescue	SiberForensics
+ewf-tools	ewfinfo	EWF Info	SiberForensics
+faraday	faraday-server	Faraday	SiberReporting
+dradis	dradis	Dradis	SiberReporting
+eyewitness	eyewitness	EyeWitness	SiberReporting
+gowitness	gowitness	GoWitness	SiberReporting
+aquatone	aquatone	Aquatone	SiberReporting
+pipal	pipal	Pipal Password Analysis	SiberReporting
+cutycapt	cutycapt	CutyCapt Screenshot	SiberReporting
+recordmydesktop	recordmydesktop	RecordMyDesktop	SiberReporting
+gophish	gophish	Gophish Phishing Simulation	SiberSocial
+king-phisher	KingPhisher	King Phisher	SiberSocial
+evilginx2	evilginx2	Evilginx2 Lab	SiberSocial
+social-engineer-toolkit	setoolkit	SET	SiberSocial
+maltego	maltego	Maltego	SiberSocial
+0trace	0trace	0trace Route Discovery	SiberBilgi
+amap	amap	AMap Service Mapper	SiberBilgi
+assetfinder	assetfinder	Assetfinder	SiberBilgi
+bluto	bluto	Bluto Recon	SiberBilgi
+braa	braa	Braa SNMP Scanner	SiberBilgi
+cero	cero	Cero Certificate Recon	SiberBilgi
+ct-exposer	ct-exposer	CT Exposer	SiberBilgi
+dnsmap	dnsmap	DNSMap	SiberBilgi
+dnscan	dnscan	DNScan	SiberBilgi
+dnstwist	dnstwist	dnstwist Domain Typosquatting	SiberBilgi
+dmitry	dmitry	DMitry	SiberBilgi
+enum4linux	enum4linux	Enum4linux	SiberBilgi
+fscan	fscan	Fscan	SiberBilgi
+findomain	findomain	Findomain	SiberBilgi
+httprobe	httprobe	httprobe HTTP Probe	SiberBilgi
+ike-scan	ike-scan	IKE Scan	SiberBilgi
+netmask	netmask	Netmask Network Utility	SiberBilgi
+p0f	p0f	p0f OS Fingerprinting	SiberBilgi
+reconspider	reconspider	ReconSpider	SiberBilgi
+rustscan	rustscan	RustScan	SiberBilgi
+scanssh	scanssh	ScanSSH	SiberBilgi
+snmpcheck	snmpcheck	SNMPcheck	SiberBilgi
+snmpenum	snmpenum	SNMPenum	SiberBilgi
+sublist3r	sublist3r	Sublist3r	SiberBilgi
+subjack	subjack	Subjack Subdomain Takeover Checker	SiberBilgi
+subover	subover	SubOver	SiberBilgi
+zmap	zmap	ZMap	SiberBilgi
+zgrab2	zgrab2	ZGrab2	SiberBilgi
+asnmap	asnmap	ASNMap	SiberBilgi
+chaos-client	chaos	Chaos API Client	SiberBilgi
+hakrevdns	hakrevdns	Hakrevdns Reverse DNS	SiberBilgi
+mapcidr	mapcidr	MapCIDR	SiberBilgi
+photon	photon	Photon OSINT Crawler	SiberBilgi
+metagoofil	metagoofil	Metagoofil Metadata Collector	SiberBilgi
+osmedeus	osmedeus	Osmedeus Recon Framework	SiberBilgi
+gospider	gospider	GoSpider Web Crawler	SiberBilgi
+tlsx	tlsx	TLSX TLS Scanner	SiberBilgi
+uncover	uncover	Uncover Search Engine	SiberBilgi
+alterx	alterx	AlterX Subdomain Permutations	SiberBilgi
+puredns	puredns	PureDNS	SiberBilgi
+urlfinder	urlfinder	URLFinder	SiberBilgi
+waymore	waymore	Waymore URL Discovery	SiberBilgi
+subjs	subjs	SubJS JavaScript URL Finder	SiberBilgi
+cariddi	cariddi	Cariddi URL Scanner	SiberBilgi
+sn0int	sn0int	sn0int OSINT Framework	SiberBilgi
+arping	arping	Arping	SiberBilgi
+unicornscan	unicornscan	Unicornscan	SiberBilgi
+onesixtyone	onesixtyone	Onesixtyone SNMP Scanner	SiberBilgi
+enumiax	enumiax	EnumIAX	SiberBilgi
+dorkme	dorkme	DorkMe Search Recon	SiberBilgi
+gcpbucketbrute	gcpbucketbrute	GCP Bucket Brute	SiberBilgi
+gitrob	gitrob	Gitrob Repository Recon	SiberBilgi
+ipscan	ipscan	IPscan Network Scanner	SiberBilgi
+ipv6toolkit	alive6	IPv6 Toolkit Alive6	SiberBilgi
+knock	knock	Knock Subdomain Scanner	SiberBilgi
+a2sv	a2sv	A2SV SSL Vulnerability Scanner	SiberZafiyet
+athena-ssl-scanner	athena-ssl-scanner	Athena SSL Scanner	SiberZafiyet
+clair	clair	Clair Container Scanner	SiberZafiyet
+cloud-audit	cloud-audit	Cloud Audit Scanner	SiberZafiyet
+cloudsploit	cloudsploit	CloudSploit Security Scanner	SiberZafiyet
+cvechecker	cvechecker	CVEchecker	SiberZafiyet
+hbad	hbad	Heartbleed Audit Tool	SiberZafiyet
+kube-hunter	kube-hunter	Kube-hunter	SiberZafiyet
+kubestriker	kubestriker	KubeStriker	SiberZafiyet
+checkov	checkov	Checkov IaC Scanner	SiberZafiyet
+detect-secrets	detect-secrets	Detect Secrets	SiberZafiyet
+gitleaks	gitleaks	Gitleaks Secret Scanner	SiberZafiyet
+trufflehog	trufflehog	TruffleHog Secret Scanner	SiberZafiyet
+tfsec	tfsec	tfsec Terraform Scanner	SiberZafiyet
+terrascan	terrascan	Terrascan IaC Scanner	SiberZafiyet
+kics	kics	KICS IaC Scanner	SiberZafiyet
+syft	syft	Syft SBOM Generator	SiberZafiyet
+bandit	bandit	Bandit Python Security Linter	SiberZafiyet
+gosec	gosec	GoSec Security Scanner	SiberZafiyet
+pip-audit	pip-audit	Pip Audit	SiberZafiyet
+retire.js	retire	Retire.js Dependency Scanner	SiberZafiyet
+bearer	bearer	Bearer Code Security Scanner	SiberZafiyet
+scout-suite	scout	ScoutSuite Cloud Audit	SiberZafiyet
+clair-scanner	clair-scanner	Clair Scanner CLI	SiberZafiyet
+clamav	clamscan	ClamAV Scanner	SiberZafiyet
+chkrootkit	chkrootkit	Chkrootkit Rootkit Checker	SiberZafiyet
+rkhunter	rkhunter	Rootkit Hunter	SiberZafiyet
+openscap	oscap	OpenSCAP Security Scanner	SiberZafiyet
+vuls	vuls	Vuls Vulnerability Scanner	SiberZafiyet
+cmsmap	cmsmap	CMSmap	SiberWeb
+corstest	corstest	CORS Test	SiberWeb
+davtest	davtest	DAVTest WebDAV Scanner	SiberWeb
+dirbuster	dirbuster	DirBuster	SiberWeb
+dirstalk	dirstalk	DirStalk	SiberWeb
+droopescan	droopescan	Droopescan CMS Scanner	SiberWeb
+joomscan	joomscan	JoomScan	SiberWeb
+graphql-cop	graphql-cop	GraphQL Cop	SiberWeb
+hsecscan	hsecscan	HSECScan HTTP Headers	SiberWeb
+http-enum	http-enum	HTTP Enum	SiberWeb
+iis-shortname-scanner	iis-shortname-scanner	IIS Shortname Scanner	SiberWeb
+smuggler	smuggler	Smuggler HTTP Request Smuggling	SiberWeb
+ssrfmap	ssrfmap	SSRFmap	SiberWeb
+jwt-tool	jwt-tool	JWT Tool	SiberWeb
+corsy	corsy	Corsy CORS Scanner	SiberWeb
+crlfuzz	crlfuzz	CRLFuzz	SiberWeb
+x8	x8	X8 HTTP Parameter Discovery	SiberWeb
+xsstrike	xsstrike	XSStrike XSS Scanner	SiberWeb
+webanalyze	webanalyze	Webanalyze Technology Fingerprinting	SiberWeb
+webtech	webtech	WebTech Fingerprinting	SiberWeb
+paramspider	paramspider	ParamSpider	SiberWeb
+linkfinder	linkfinder	LinkFinder JavaScript Endpoints	SiberWeb
+secretfinder	SecretFinder	SecretFinder	SiberWeb
+cmseek	cmseek	CMSeeK CMS Scanner	SiberWeb
+drupwn	drupwn	Drupwn Drupal Scanner	SiberWeb
+blindelephant	blindelephant	BlindElephant CMS Fingerprinting	SiberWeb
+detectem	detectem	Detectem Web Technology Detector	SiberWeb
+d-tect	d-tect	D-Tect Web Pentest Toolkit	SiberWeb
+dvcs-ripper	dvcs-ripper	DVCS Ripper	SiberWeb
+git-dumper	git-dumper	Git Dumper	SiberWeb
+hoppy	hoppy	Hoppy HTTP Methods Checker	SiberWeb
+halberd	halberd	Halberd Load Balancer Discovery	SiberWeb
+fgscanner	fgscanner	FGScanner URL Scanner	SiberWeb
+dirhunt	dirhunt	Dirhunt Web Crawler	SiberWeb
+webshells	webshells	Webshells Audit Utility	SiberWeb
+graphqlmap	graphqlmap	GraphQLmap	SiberWeb
+parameth	parameth	Parameth HTTP Parameter Discovery	SiberWeb
+mongoaudit	mongoaudit	Mongoaudit MongoDB Audit	SiberDatabase
+mssqlscan	mssqlscan	MSSQLScan	SiberDatabase
+sqlsus	sqlsus	SQLsus	SiberDatabase
+metacoretex	metacoretex	Metacoretex Database Assessment	SiberDatabase
+blindsql	blindsql	BlindSQL	SiberDatabase
+jsql-injection	jsql-injection	jSQL Injection	SiberDatabase
+cewl	cewl	CeWL Custom Wordlist Generator	SiberSifre
+rcracki_mt	rcracki_mt	RainbowCracki Multi-threaded	SiberSifre
+hashcat-utils	hcstatgen	Hashcat HCStat Generator	SiberSifre
+hashcat-utils	combinator	Hashcat Combinator	SiberSifre
+bkcrack	bkcrack	BKCrack ZIP Password Recovery	SiberSifre
+bkhive	bkhive	Bkhive Syskey Utility	SiberSifre
+johnny	johnny	Johnny John the Ripper GUI	SiberSifre
+kwprocessor	kwp	Kwprocessor Keyboard Walk Generator	SiberSifre
+maskprocessor	mp64	Maskprocessor	SiberSifre
+statsprocessor	sp64	Statsprocessor	SiberSifre
+pack	pack	PACK Password Analysis and Cracking Kit	SiberSifre
+princeprocessor	pp64	PRINCE Password Candidate Generator	SiberSifre
+wordlistctl	wordlistctl	Wordlist Controller	SiberSifre
+genpmk	genpmk	GenPMK Precomputed WPA Key Generator	SiberSifre
+pyrit	pyrit	Pyrit WPA Audit Tool	SiberSifre
+hashcat-utils	expander	Hashcat Wordlist Expander	SiberSifre
+airgeddon	airgeddon	Airgeddon Wireless Audit Suite	SiberWireless
+bluelog	bluelog	BlueLog Bluetooth Discovery	SiberWireless
+bluesnarfer	bluesnarfer	Bluesnarfer Bluetooth Audit	SiberWireless
+crackle	crackle	Crackle BLE Security Tool	SiberWireless
+eaphammer	eaphammer	EAPHammer Wireless Assessment	SiberWireless
+fluxion	fluxion	Fluxion Wireless Audit Lab	SiberWireless
+horst	horst	HORST Wireless Network Analyzer	SiberWireless
+kalibrate-rtl	kal	Kalibrate RTL-SDR	SiberWireless
+wifiphisher	wifiphisher	Wifiphisher Wireless Security Test	SiberWireless
+wifijammer	wifijammer	Wifijammer	SiberWireless
+wifipumpkin3	wifipumpkin3	WiFi-Pumpkin3 Wireless Lab	SiberWireless
+blue-hydra	blue-hydra	BlueHydra Bluetooth Discovery	SiberWireless
+ubertooth	ubertooth-rx	Ubertooth RX	SiberWireless
+ubertooth	ubertooth-util	Ubertooth Utility	SiberWireless
+bleah	bleah	BLEah Bluetooth LE Scanner	SiberWireless
+aircrack-ng	airmon-ng	Aircrack-ng Monitor Mode Utility	SiberWireless
+apkstudio	apkstudio	APK Studio	SiberReverse
+androguard	androguard	Androguard Android Analysis	SiberReverse
+angr-management	angr-management	angr Management GUI	SiberReverse
+bytecode-viewer	bytecode-viewer	Bytecode Viewer	SiberReverse
+cutter	cutter	Cutter Reverse Engineering GUI	SiberReverse
+frida-tools	frida	Frida Dynamic Instrumentation	SiberReverse
+frida-tools	frida-ps	Frida Process List	SiberReverse
+frida-tools	frida-trace	Frida Trace	SiberReverse
+jd-cli	jd-cli	JD-CLI Java Decompiler	SiberReverse
+jd-gui	jd-gui	JD-GUI Java Decompiler	SiberReverse
+python-uncompyle6	uncompyle6	Uncompyle6 Python Decompiler	SiberReverse
+recaf	recaf	Recaf JVM Reverse Engineering	SiberReverse
+retdec	retdec-decompiler.py	RetDec Decompiler	SiberReverse
+seccomp-tools	seccomp-tools	Seccomp Tools	SiberReverse
+udis86	udis86	Udis86 Disassembler	SiberReverse
+ghidriff	ghidriff	Ghidriff Ghidra Diffing	SiberReverse
+innounp	innounp	Inno Setup Unpacker	SiberReverse
+javasnoop	javasnoop	JavaSnoop Runtime Inspection	SiberReverse
+netzob	netzob	Netzob Protocol Reverse Engineering	SiberReverse
+pyinstxtractor	pyinstxtractor.py	PyInstaller Extractor	SiberReverse
+frida-tools	frida-compile	Frida Compile	SiberReverse
+armitage	armitage	Armitage Metasploit GUI	SiberExploitation
+bed	bed	BED Bruteforce Exploit Detector	SiberExploitation
+boofuzz	boofuzz	Boofuzz Protocol Fuzzer	SiberExploitation
+exploitpack	exploitpack	Exploit Pack	SiberExploitation
+pwncat	pwncat	Pwncat Post-Exploitation Console	SiberExploitation
+ysoserial	ysoserial	Ysoserial Java Deserialization Testing	SiberExploitation
+ysoserial-faster	ysoserial-faster	Ysoserial Faster	SiberExploitation
+beebug	beebug	BeeBug Exploitability Checker	SiberExploitation
+firmware-mod-kit	extract-firmware.sh	Firmware Mod Kit Extractor	SiberExploitation
+shellnoob	shellnoob	ShellNoob Shellcode Utility	SiberExploitation
+one-gadget	one_gadget	One Gadget ROP Helper	SiberExploitation
+pwndbg	pwndbg	Pwndbg GDB Debugger	SiberExploitation
+bittwist	bittwist	Bit-Twist Packet Generator	SiberSniffing
+capfuzz	capfuzz	CapFuzz Traffic Testing	SiberSniffing
+cdpsnarf	cdpsnarf	CDPsnarf Cisco Discovery Protocol	SiberSniffing
+dnswatch	dnswatch	DNSWatch Traffic Monitor	SiberSniffing
+hexinject	hexinject	HexInject Packet Tool	SiberSniffing
+httpry	httpry	HTTPr y HTTP Sniffer	SiberSniffing
+junkie	junkie	Junkie Packet Analyzer	SiberSniffing
+net-creds	net-creds	Net-Creds Traffic Credential Audit	SiberSniffing
+netsed	netsed	NetSED Network Stream Editor	SiberSniffing
+nsntrace	nsntrace	Nsntrace Process Network Trace	SiberSniffing
+ostinato	ostinato	Ostinato Packet Generator	SiberSniffing
+passivedns	passivedns	PassiveDNS	SiberSniffing
+pcapteller	pcapteller	PCAPTeller Traffic Replay	SiberSniffing
+pyrdp	pyrdp-convert	PyRDP Convert	SiberSniffing
+ssldump	ssldump	SSLdump TLS Analyzer	SiberSniffing
+sslsniff	sslsniff	SSLsniff TLS Inspection Lab	SiberSniffing
+stenographer	stenographer	Stenographer Packet Capture	SiberSniffing
+wifi-monitor	wifi-monitor	WiFi Monitor	SiberSniffing
+scapy	scapy	Scapy Packet Crafting and Analysis	SiberSniffing
+termshark	termshark	Termshark Terminal PCAP Analyzer	SiberSniffing
+above	above	Above Network Protocol Sniffer	SiberSniffing
+creds	creds	Creds Traffic Analysis	SiberSniffing
+firstorder	firstorder	Firstorder Traffic Analyzer	SiberSniffing
+sipffer	sipffer	Sipffer SIP Sniffer	SiberSniffing
+certipy-ad	certipy	Certipy Active Directory Assessment	SiberPost
+coercer	coercer	Coercer RPC Authentication Audit	SiberPost
+donpapi	donpapi	DonPAPI Windows Credential Audit	SiberPost
+krbrelayx	krbrelayx	KrbRelayX Kerberos Assessment	SiberPost
+ldapdomaindump	ldapdomaindump	LDAP Domain Dump	SiberPost
+mitm6	mitm6	mitm6 IPv6 Assessment	SiberPost
+pywhisker	pywhisker	PyWhisker Shadow Credential Audit	SiberPost
+sccmhunter	sccmhunter	SCCMHunter Assessment	SiberPost
+smbclient-ng	smbclient-ng	SMBClient-ng	SiberPost
+windapsearch	windapsearch	Windapsearch LDAP Discovery	SiberPost
+bloodyad	bloodyAD	BloodyAD Active Directory Assessment	SiberPost
+manspider	manspider	ManSpider SMB Share Search	SiberPost
+linux-smart-enumeration	lse.sh	Linux Smart Enumeration	SiberPost
+linpeas	linpeas.sh	LinPEAS Linux Enumeration	SiberPost
+linux-exploit-suggester	linux-exploit-suggester.sh	Linux Exploit Suggester	SiberPost
+winpeas	winpeas	WinPEAS Windows Enumeration	SiberPost
+watson	watson	Watson Windows Local Enumeration	SiberPost
+impacket	GetUserSPNs.py	Impacket GetUserSPNs	SiberPost
+impacket	lookupsid.py	Impacket Lookupsid	SiberPost
+impacket	ntlmrelayx.py	Impacket NTLM Relay	SiberPost
+impacket	smbclient.py	Impacket SMB Client	SiberPost
+impacket	atexec.py	Impacket Atexec	SiberPost
+impacket	dcomexec.py	Impacket DCOMExec	SiberPost
+impacket	rdp_check.py	Impacket RDP Check	SiberPost
+impacket	wmiquery.py	Impacket WMI Query	SiberPost
+pypykatz	pypykatz	Pypykatz Credential Forensics	SiberPost
+afflib	affcat	AFFLIB Image Reader	SiberForensics
+afflib	affinfo	AFFLIB Image Info	SiberForensics
+analyzemft	analyzemft	AnalyzeMFT	SiberForensics
+bmc-tools	bmc-tools	BMC Tools RDP Cache Parser	SiberForensics
+captipper	captipper	CapTipper HTTP Traffic Explorer	SiberForensics
+dc3dd	dc3dd	DC3DD Forensic Imaging	SiberForensics
+dcfldd	dcfldd	DCFLDD Forensic Imaging	SiberForensics
+hindsight	hindsight	Hindsight Browser Forensics	SiberForensics
+libpff	pffexport	PFF Export Outlook Forensics	SiberForensics
+plaso	log2timeline.py	Plaso Log2Timeline	SiberForensics
+plaso	psort.py	Plaso Psort Timeline Tool	SiberForensics
+rifiuti2	rifiuti	Rifiuti Recycle Bin Analysis	SiberForensics
+reglookup	reglookup	Reglookup Registry Forensics	SiberForensics
+xmount	xmount	XMount Disk Image Mounting	SiberForensics
+guymager	guymager	Guymager Forensic Imager	SiberForensics
+sleuthkit	fsstat	Sleuth Kit Filesystem Stats	SiberForensics
+sleuthkit	icat	Sleuth Kit File Extractor	SiberForensics
+sleuthkit	ils	Sleuth Kit Inode List	SiberForensics
+sleuthkit	istat	Sleuth Kit Inode Details	SiberForensics
+sleuthkit	tsk_recover	Sleuth Kit File Recovery	SiberForensics
+sleuthkit	mmstat	Sleuth Kit Media Management Stats	SiberForensics
+ewf-tools	ewfacquire	EWF Acquire	SiberForensics
+ewf-tools	ewfverify	EWF Verify	SiberForensics
+ewf-tools	ewfexport	EWF Export	SiberForensics
+testdisk	fidentify	Fidentify File Signature Scanner	SiberForensics
+exiv2	exiv2	Exiv2 Metadata Utility	SiberForensics
+volatility3	volshell	Volatility 3 Volshell	SiberForensics
+yara-x	yr	YARA-X Scanner	SiberForensics
+plaso	psteal.py	Plaso Psteal Timeline Helper	SiberForensics
+magictree	magictree	MagicTree Pentest Report Organizer	SiberReporting
+pwnreport	pwnreport	PwnReport	SiberReporting
+vulnreport	vulnreport	VulnReport	SiberReporting
+serpico	serpico	Serpico Pentest Report Platform	SiberReporting
+reconmap	reconmap	Reconmap Reporting Platform	SiberReporting
+phoneinfoga	phoneinfoga	PhoneInfoga Phone Number OSINT	SiberSocial
+holehe	holehe	Holehe Email Account OSINT	SiberSocial
+maigret	maigret	Maigret Username OSINT	SiberSocial
+socialscan	socialscan	SocialScan Account Availability	SiberSocial
+mosint	mosint	Mosint Email OSINT	SiberSocial
+h8mail	h8mail	H8mail Email Breach Search	SiberSocial
+phishery	phishery	Phishery Security Awareness Lab	SiberSocial
+osrframework	usufy	OSRFramework Username Lookup	SiberSocial
+osrframework	mailfy	OSRFramework Email Lookup	SiberSocial
+osrframework	phonefy	OSRFramework Phone Lookup	SiberSocial
